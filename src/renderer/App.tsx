@@ -1,3 +1,9 @@
+import { useEffect, useState } from 'react';
+import type { InventoryApi } from '../shared/contracts';
+import { getInventoryApi } from './api';
+import LocationsPage from './pages/LocationsPage';
+import ProductsPage from './pages/ProductsPage';
+import SetupPage from './pages/SetupPage';
 import './styles.css';
 
 const navigation = [
@@ -10,7 +16,19 @@ const navigation = [
   'Reports',
 ];
 
-export default function App() {
+export default function App({ api = getInventoryApi() }: { api?: InventoryApi } = {}) {
+  const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
+  const [view, setView] = useState('Today');
+
+  useEffect(() => {
+    let mounted = true;
+    void api.getSetupState().then((state) => { if (mounted) setSetupComplete(state.complete); });
+    return () => { mounted = false; };
+  }, [api]);
+
+  if (setupComplete === null) return <main className="setup-page"><p role="status">Loading local ledger…</p></main>;
+  if (!setupComplete) return <SetupPage api={api} onComplete={() => setSetupComplete(true)} />;
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Main navigation">
@@ -20,9 +38,9 @@ export default function App() {
         </div>
         <nav>
           <ul className="nav-list">
-            {navigation.map((item, index) => (
+            {navigation.map((item) => (
               <li key={item}>
-                <a className={index === 0 ? 'nav-link active' : 'nav-link'} href="#">
+                <a className={view === item ? 'nav-link active' : 'nav-link'} href="#" onClick={(event) => { event.preventDefault(); setView(item); }}>
                   {item}
                 </a>
               </li>
@@ -30,9 +48,9 @@ export default function App() {
           </ul>
         </nav>
         <div className="nav-secondary">
-          <a className="nav-link" href="#">Products</a>
-          <a className="nav-link" href="#">Locations</a>
-          <a className="nav-link" href="#">Settings</a>
+          <a className={view === 'Products' ? 'nav-link active' : 'nav-link'} href="#" onClick={(event) => { event.preventDefault(); setView('Products'); }}>Products</a>
+          <a className={view === 'Locations' ? 'nav-link active' : 'nav-link'} href="#" onClick={(event) => { event.preventDefault(); setView('Locations'); }}>Locations</a>
+          <a className="nav-link" href="#" onClick={(event) => event.preventDefault()}>Settings</a>
         </div>
       </aside>
 
@@ -47,7 +65,7 @@ export default function App() {
           </button>
         </header>
 
-        <section className="ledger-page" aria-labelledby="page-title">
+        {view === 'Products' ? <ProductsPage api={api} /> : view === 'Locations' ? <LocationsPage api={api} /> : <section className="ledger-page" aria-labelledby="page-title">
           <div className="page-heading">
             <div>
               <p className="eyebrow">Tuesday · Main Cart</p>
@@ -74,7 +92,7 @@ export default function App() {
             </div>
             <div className="empty-note">Your product ledger will appear here.</div>
           </section>
-        </section>
+        </section>}
       </main>
     </div>
   );
