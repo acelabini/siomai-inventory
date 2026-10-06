@@ -20,6 +20,9 @@ import type {
   SaleReceipt,
   SaleSummary,
   ReportFilter,
+  ImportPreview,
+  CsvImportCommitInput,
+  CsvImportRequest,
 } from './schemas';
 
 export type DashboardProduct = { productId: string; sku: string; productName: string; piecesPerPack: number; openingPieces: number; replenishedPieces: number; soldPieces: number; remainingPieces: number; stockValueCentavos: number; lowStockThresholdPieces: number; isLowStock: boolean };
@@ -56,6 +59,10 @@ export type InventoryApi = {
   getProfitReport(filter?: ReportFilter): Promise<ProfitReport>;
   getDiscrepancyReport(filter?: ReportFilter): Promise<DiscrepancyReport>;
   getLowStockReport(filter?: ReportFilter): Promise<LowStockReport>;
+  chooseCsvImportFile(): Promise<{ fileName: string; csv: string } | null>;
+  previewCsvImport(request: CsvImportRequest): Promise<ImportPreview>;
+  commitCsvImport(input: CsvImportCommitInput): Promise<{ importedRows: number; aggregate: boolean }>;
+  exportReportCsv(kind: 'profit' | 'sales' | 'movements' | 'valuation' | 'discrepancies' | 'low-stock', filter?: ReportFilter): Promise<boolean>;
 };
 
 declare global {

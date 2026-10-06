@@ -38,6 +38,10 @@ const inventoryApi: InventoryApi = {
   getProfitReport: (filter) => call('reports:profit', filter),
   getDiscrepancyReport: (filter) => call('reports:discrepancies', filter),
   getLowStockReport: (filter) => call('reports:low-stock', filter),
+  chooseCsvImportFile: () => call('files:choose-csv-import'),
+  previewCsvImport: (request) => call('imports:preview', request),
+  commitCsvImport: (input) => call('imports:commit', input),
+  exportReportCsv: (kind, filter) => call('reports:export-csv', { kind, filter }),
 };
 
 contextBridge.exposeInMainWorld('inventoryApi', inventoryApi satisfies InventoryApi);

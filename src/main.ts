@@ -8,6 +8,8 @@ import { CatalogService } from './main/services/catalog-service';
 import { InventoryService } from './main/services/inventory-service';
 import { SalesService } from './main/services/sales-service';
 import { ReportService } from './main/services/report-service';
+import { ImportService } from './main/services/import-service';
+import { ExportService } from './main/services/export-service';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 
@@ -53,7 +55,10 @@ if (process.versions.electron) {
   void app.whenReady().then(() => {
     const db = openDatabase(path.join(app.getPath('userData'), 'inventory.sqlite'));
     migrateDatabase(db);
-    registerCatalogHandlers(ipcMain, new CatalogService(db), new InventoryService(db), new SalesService(db), new ReportService(db));
+    const catalog = new CatalogService(db);
+    const inventory = new InventoryService(db);
+    const reports = new ReportService(db);
+    registerCatalogHandlers(ipcMain, catalog, inventory, new SalesService(db), reports, new ImportService(db, catalog, inventory), new ExportService());
     createWindow();
 
     app.on('activate', () => {

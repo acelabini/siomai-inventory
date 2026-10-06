@@ -25,6 +25,8 @@ export default function ReportsPage({ api = getInventoryApi(), filter, onFilterC
   const [discrepancies, setDiscrepancies] = useState<DiscrepancyReport | null>(null);
   const [lowStock, setLowStock] = useState<LowStockReport | null>(null);
   const [error, setError] = useState('');
+  const [exportKind, setExportKind] = useState<'profit' | 'sales' | 'movements' | 'valuation' | 'discrepancies' | 'low-stock'>('profit');
+  const [exportMessage, setExportMessage] = useState('');
   const locations = filter?.locations ?? localLocations;
   const selectedLocationId = filter?.locationId ?? locationId;
   const selectedDate = filter?.date ?? date;
@@ -41,8 +43,16 @@ export default function ReportsPage({ api = getInventoryApi(), filter, onFilterC
   }, [api, selectedDate, selectedLocationId, locations.length]);
   const updateLocation = (nextLocationId: string) => filter ? onFilterChange?.({ locationId: nextLocationId, date: selectedDate }) : setLocationId(nextLocationId);
   const updateDate = (nextDate: string) => filter ? onFilterChange?.({ locationId: selectedLocationId, date: nextDate }) : setDate(nextDate);
+  async function exportCsv() {
+    setExportMessage('');
+    try {
+      const saved = await api.exportReportCsv(exportKind, { date: selectedDate, ...(selectedLocationId ? { locationId: selectedLocationId } : {}) });
+      if (saved) setExportMessage('CSV export saved.');
+    } catch { setExportMessage('The CSV export could not be saved.'); }
+  }
   return <section className="catalog-page reports-page" aria-labelledby="page-title">
-    <div className="page-heading"><div><p className="eyebrow">Daily ledger extracts</p><h1 id="page-title">Reports</h1></div><button type="button" className="primary-button" onClick={() => window.print()}>Print report</button></div>
+    <div className="page-heading"><div><p className="eyebrow">Daily ledger extracts</p><h1 id="page-title">Reports</h1></div><div className="form-actions"><label className="form-field compact-field" htmlFor="report-export-type">Export<select id="report-export-type" value={exportKind} onChange={(event) => setExportKind(event.target.value as typeof exportKind)}><option value="profit">Profit</option><option value="sales">Sales</option><option value="movements">Stock movements</option><option value="valuation">Stock valuation</option><option value="discrepancies">Discrepancies</option><option value="low-stock">Low stock</option></select></label><button type="button" className="secondary-button" onClick={() => void exportCsv()}>Export CSV</button><button type="button" className="primary-button" onClick={() => window.print()}>Print report</button></div></div>
+    {exportMessage && <p role="status" className="report-note">{exportMessage}</p>}
     <div className="filter-row report-filters">
       <label className="form-field compact-field">Location<select aria-label="Report location" value={selectedLocationId} onChange={(event) => updateLocation(event.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
       <label className="form-field compact-field">Report date<input aria-label="Report date" type="date" value={selectedDate} onChange={(event) => updateDate(event.target.value)} /></label>

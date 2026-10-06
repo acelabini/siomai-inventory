@@ -83,6 +83,17 @@ const businessDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((date)
   return Number.isFinite(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === date;
 }, 'Enter a valid business date');
 export const reportFilterSchema = z.object({ locationId: idSchema.optional(), date: businessDateSchema.optional() });
+export const importKindSchema = z.enum(['products', 'opening-stock', 'spreadsheet-aggregate']);
+export const importMappingSchema = z.record(z.string(), z.string()).optional();
+export const csvImportRequestSchema = z.object({ csv: z.string().max(5_000_000), kind: importKindSchema, locationId: idSchema.optional(), mapping: importMappingSchema });
+export const csvImportCommitSchema = csvImportRequestSchema.extend({ token: idSchema, contentHash: z.string().regex(/^[a-f0-9]{64}$/) });
+export const csvImportPreviewSchema = z.object({
+  token: idSchema, contentHash: z.string().regex(/^[a-f0-9]{64}$/), kind: importKindSchema,
+  validRows: z.number().int().min(0), invalidRows: z.number().int().min(0),
+  errors: z.array(z.object({ row: z.number().int().positive(), message: z.string() })),
+  summary: z.string(), columns: z.array(z.string()),
+});
+export const reportExportSchema = z.object({ kind: z.enum(['profit', 'sales', 'movements', 'valuation', 'discrepancies', 'low-stock']), filter: reportFilterSchema.optional() });
 
 export type StockQuantityInput = z.infer<typeof inventoryLineSchema>;
 export type SetOpeningStockInput = z.infer<typeof setOpeningStockSchema>;
@@ -93,6 +104,11 @@ export type MovementHistoryQuery = z.infer<typeof movementHistoryQuerySchema>;
 export type CompleteSaleInput = z.infer<typeof completeSaleSchema>;
 export type SalesListQuery = z.infer<typeof salesListQuerySchema>;
 export type ReportFilter = z.infer<typeof reportFilterSchema>;
+export type ImportKind = z.infer<typeof importKindSchema>;
+export type ImportMapping = Record<string, string>;
+export type CsvImportRequest = z.infer<typeof csvImportRequestSchema>;
+export type CsvImportCommitInput = z.infer<typeof csvImportCommitSchema>;
+export type ImportPreview = z.infer<typeof csvImportPreviewSchema>;
 export type SaleStatus = 'completed' | 'voided';
 export type InventoryBalance = { locationId: string; productId: string; quantityPieces: number; };
 export type StockMovement = {

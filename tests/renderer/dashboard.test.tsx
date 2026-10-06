@@ -19,6 +19,7 @@ function makeApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
     getSalesReport: vi.fn().mockResolvedValue({ date: '2026-10-07', sales: [] }), getMovementReport: vi.fn().mockResolvedValue({ date: '2026-10-07', movements: [] }),
     getValuationReport: vi.fn().mockResolvedValue({ date: '2026-10-07', totalValueCentavos: 0, items: [] }), getProfitReport: vi.fn().mockResolvedValue({ date: '2026-10-07', revenueCentavos: 0, costCentavos: 0, grossProfitCentavos: 0 }),
     getDiscrepancyReport: vi.fn().mockResolvedValue({ date: '2026-10-07', count: 0, items: [] }), getLowStockReport: vi.fn().mockResolvedValue({ date: '2026-10-07', count: 0, items: [] }),
+    chooseCsvImportFile: vi.fn().mockResolvedValue(null), previewCsvImport: vi.fn(), commitCsvImport: vi.fn(), exportReportCsv: vi.fn().mockResolvedValue(false),
     ...overrides,
   };
 }
