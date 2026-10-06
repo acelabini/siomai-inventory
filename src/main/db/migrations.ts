@@ -123,6 +123,63 @@ const migrations: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    name: 'inventory_workflow_cost_snapshots',
+    sql: `
+      ALTER TABLE stock_movements ADD COLUMN unit_cost_centavos INTEGER
+        CHECK (unit_cost_centavos IS NULL OR (typeof(unit_cost_centavos) = 'integer' AND unit_cost_centavos >= 0));
+      ALTER TABLE stock_movements ADD COLUMN line_cost_centavos INTEGER
+        CHECK (line_cost_centavos IS NULL OR (typeof(line_cost_centavos) = 'integer' AND line_cost_centavos >= 0));
+
+      CREATE TABLE replenishments (
+        id TEXT PRIMARY KEY,
+        location_id TEXT NOT NULL REFERENCES locations(id),
+        occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        note TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE replenishment_lines (
+        id TEXT PRIMARY KEY,
+        replenishment_id TEXT NOT NULL REFERENCES replenishments(id),
+        product_id TEXT NOT NULL REFERENCES products(id),
+        quantity_pieces INTEGER NOT NULL CHECK (typeof(quantity_pieces) = 'integer' AND quantity_pieces > 0),
+        entered_unit TEXT NOT NULL CHECK (entered_unit IN ('piece', 'pack')),
+        entered_quantity TEXT NOT NULL,
+        unit_cost_centavos INTEGER NOT NULL CHECK (typeof(unit_cost_centavos) = 'integer' AND unit_cost_centavos >= 0),
+        line_cost_centavos INTEGER NOT NULL CHECK (typeof(line_cost_centavos) = 'integer' AND line_cost_centavos >= 0),
+        UNIQUE (replenishment_id, product_id)
+      );
+
+      CREATE TABLE opening_stock_records (
+        location_id TEXT NOT NULL REFERENCES locations(id),
+        product_id TEXT NOT NULL REFERENCES products(id),
+        quantity_pieces INTEGER NOT NULL CHECK (typeof(quantity_pieces) = 'integer' AND quantity_pieces >= 0),
+        recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (location_id, product_id)
+      );
+
+      CREATE TABLE transfer_batches (
+        id TEXT PRIMARY KEY,
+        from_location_id TEXT NOT NULL REFERENCES locations(id),
+        to_location_id TEXT NOT NULL REFERENCES locations(id),
+        note TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CHECK (from_location_id <> to_location_id)
+      );
+      ALTER TABLE transfers ADD COLUMN transfer_batch_id TEXT REFERENCES transfer_batches(id);
+
+      CREATE TRIGGER stock_movements_immutable_update
+      BEFORE UPDATE ON stock_movements BEGIN
+        SELECT RAISE(ABORT, 'stock movements are immutable');
+      END;
+      CREATE TRIGGER stock_movements_immutable_delete
+      BEFORE DELETE ON stock_movements BEGIN
+        SELECT RAISE(ABORT, 'stock movements are immutable');
+      END;
+    `,
+  },
 ];
 
 export function migrateDatabase(db: Database.Database): void {

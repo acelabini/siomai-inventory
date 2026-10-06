@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react';
 import type { InventoryApi } from '../shared/contracts';
 import { getInventoryApi } from './api';
 import LocationsPage from './pages/LocationsPage';
+import InventoryPage from './pages/InventoryPage';
 import ProductsPage from './pages/ProductsPage';
+import ReplenishPage from './pages/ReplenishPage';
+import StockCountPage from './pages/StockCountPage';
 import SetupPage from './pages/SetupPage';
+import TransfersPage from './pages/TransfersPage';
 import './styles.css';
 
 const navigation = [
@@ -65,7 +69,7 @@ export default function App({ api = getInventoryApi() }: { api?: InventoryApi } 
           </button>
         </header>
 
-        {view === 'Products' ? <ProductsPage api={api} /> : view === 'Locations' ? <LocationsPage api={api} /> : <section className="ledger-page" aria-labelledby="page-title">
+        {view === 'Products' ? <ProductsPage api={api} /> : view === 'Locations' ? <LocationsPage api={api} /> : view === 'Inventory' ? <InventoryPage api={api} /> : view === 'Replenish' ? <ReplenishPage api={api} /> : view === 'Transfers' ? <TransfersPage api={api} /> : view === 'Stock count' ? <StockCountPage api={api} /> : <section className="ledger-page" aria-labelledby="page-title">
           <div className="page-heading">
             <div>
               <p className="eyebrow">Tuesday · Main Cart</p>

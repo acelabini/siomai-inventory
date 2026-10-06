@@ -15,6 +15,10 @@ const requiredTables = [
   'stock_count_lines',
   'schema_migrations',
   'backup_history',
+  'replenishments',
+  'replenishment_lines',
+  'opening_stock_records',
+  'transfer_batches',
 ];
 
 const fractionalIntegerColumns = [
@@ -150,7 +154,7 @@ describe('database migrations', () => {
         .all();
       expect(tables).toEqual(expect.arrayContaining(requiredTables));
       expect(db.pragma('foreign_keys', { simple: true })).toBe(1n);
-      expect(db.prepare('SELECT version FROM schema_migrations').pluck().all()).toHaveLength(1);
+      expect(db.prepare('SELECT version FROM schema_migrations').pluck().all()).toHaveLength(2);
     } finally {
       cleanup();
     }
@@ -165,7 +169,7 @@ describe('database migrations', () => {
       migrateDatabase(db);
 
       expect(db.prepare('SELECT value FROM settings WHERE key = ?').pluck().get('theme')).toBe('light');
-      expect(db.prepare('SELECT version FROM schema_migrations').pluck().all()).toHaveLength(1);
+      expect(db.prepare('SELECT version FROM schema_migrations').pluck().all()).toHaveLength(2);
     } finally {
       cleanup();
     }

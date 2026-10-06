@@ -22,6 +22,12 @@ const inventoryApi: InventoryApi = {
   listLocations: (options) => call('catalog:list-locations', options),
   saveLocation: (input) => call('catalog:save-location', input),
   archiveLocation: (id) => call('catalog:archive-location', id),
+  setOpeningStock: (input) => call('inventory:set-opening-stock', input),
+  recordReplenishment: (input) => call('inventory:record-replenishment', input),
+  transferStock: (input) => call('inventory:transfer-stock', input),
+  submitStockCount: (input) => call('inventory:submit-stock-count', input),
+  getBalances: (locationId) => call('inventory:get-balances', { locationId }),
+  getMovementHistory: (query) => call('inventory:get-movement-history', query),
 };
 
 contextBridge.exposeInMainWorld('inventoryApi', inventoryApi satisfies InventoryApi);
