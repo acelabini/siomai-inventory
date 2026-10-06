@@ -23,9 +23,12 @@ body {
 
 button, a { font: inherit; }
 
-.app-shell { display: flex; min-height: 100vh; }
+.app-shell { display: flex; min-height: 100vh; align-items: flex-start; }
 
 .sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
   display: flex;
   flex: 0 0 220px;
   flex-direction: column;
@@ -80,6 +83,9 @@ button, a { font: inherit; }
 .workspace { flex: 1; min-width: 0; }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -91,6 +97,8 @@ button, a { font: inherit; }
 
 .context { display: flex; gap: 28px; color: #4c554e; font-size: 13px; }
 .context-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+.context-control { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.context-control select, .context-control input { min-width: 150px; min-height: 34px; padding: 5px 8px; border: 1px solid #c9d0c8; border-radius: 6px; background: #fffefa; color: var(--ink); font: inherit; font-size: 12px; }
 
 .primary-button {
   min-height: 42px;
@@ -228,6 +236,7 @@ h1 { margin-bottom: 0; font-family: "Avenir Next Condensed", "Arial Narrow", san
 .reports-page .report-filters { margin-bottom: 18px; }
 .report-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .report-section-title { margin: 24px 0 10px; font-size: 16px; font-weight: 650; }
+.report-note { margin: -2px 0 10px; color: #687269; font-size: 12px; }
 .reports-page .data-table-scroll { margin-bottom: 20px; }
 .sale-layout { grid-template-columns: minmax(360px, 1.25fr) minmax(270px, .75fr); }
 .sale-search-results { display: grid; gap: 6px; }
@@ -265,6 +274,7 @@ h1 { margin-bottom: 0; font-family: "Avenir Next Condensed", "Arial Narrow", san
   .sidebar { flex-basis: 176px; padding-right: 10px; padding-left: 10px; }
   .topbar { padding: 0 16px; }
   .context { gap: 12px; }
+  .context-control select, .context-control input { min-width: 112px; }
   .dashboard-heading { align-items: flex-start; flex-direction: column; }
   .metric-grid, .report-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

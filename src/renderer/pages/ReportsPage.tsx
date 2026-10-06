@@ -12,8 +12,10 @@ function manilaToday(): string {
 }
 const peso = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount / 100);
 
-export default function ReportsPage({ api = getInventoryApi() }: { api?: InventoryApi }) {
-  const [locations, setLocations] = useState<CatalogLocation[]>([]);
+type SharedFilter = { locationId: string; date: string; locations: CatalogLocation[] };
+
+export default function ReportsPage({ api = getInventoryApi(), filter, onFilterChange }: { api?: InventoryApi; filter?: SharedFilter; onFilterChange?: (filter: { locationId: string; date: string }) => void }) {
+  const [localLocations, setLocalLocations] = useState<CatalogLocation[]>([]);
   const [locationId, setLocationId] = useState('');
   const [date, setDate] = useState(manilaToday);
   const [sales, setSales] = useState<SalesReport | null>(null);
@@ -23,22 +25,27 @@ export default function ReportsPage({ api = getInventoryApi() }: { api?: Invento
   const [discrepancies, setDiscrepancies] = useState<DiscrepancyReport | null>(null);
   const [lowStock, setLowStock] = useState<LowStockReport | null>(null);
   const [error, setError] = useState('');
-  useEffect(() => { let live = true; void api.listLocations().then((items) => { if (live) { setLocations(items); setLocationId((current) => current || items[0]?.id || ''); } }).catch(() => { if (live) setError('Locations could not be loaded.'); }); return () => { live = false; }; }, [api]);
+  const locations = filter?.locations ?? localLocations;
+  const selectedLocationId = filter?.locationId ?? locationId;
+  const selectedDate = filter?.date ?? date;
+  useEffect(() => { if (filter) return; let live = true; void api.listLocations().then((items) => { if (live) { setLocalLocations(items); setLocationId((current) => current || items[0]?.id || ''); } }).catch(() => { if (live) setError('Locations could not be loaded.'); }); return () => { live = false; }; }, [api, filter]);
   useEffect(() => {
-    if (!date || !locations.length) return;
+    if (!selectedDate || !locations.length) return;
     let live = true; setError('');
-    const filter = { date, ...(locationId ? { locationId } : {}) };
-    void Promise.all([api.getSalesReport(filter), api.getMovementReport(filter), api.getValuationReport(filter), api.getProfitReport(filter), api.getDiscrepancyReport(filter), api.getLowStockReport(filter)])
+    const query = { date: selectedDate, ...(selectedLocationId ? { locationId: selectedLocationId } : {}) };
+    void Promise.all([api.getSalesReport(query), api.getMovementReport(query), api.getValuationReport(query), api.getProfitReport(query), api.getDiscrepancyReport(query), api.getLowStockReport(query)])
       .then(([salesData, movementData, valuationData, profitData, discrepancyData, lowStockData]) => {
         if (!live) return; setSales(salesData); setMovements(movementData); setValuation(valuationData); setProfit(profitData); setDiscrepancies(discrepancyData); setLowStock(lowStockData);
       }).catch(() => { if (live) setError('Reports could not be loaded.'); });
     return () => { live = false; };
-  }, [api, date, locationId, locations.length]);
+  }, [api, selectedDate, selectedLocationId, locations.length]);
+  const updateLocation = (nextLocationId: string) => filter ? onFilterChange?.({ locationId: nextLocationId, date: selectedDate }) : setLocationId(nextLocationId);
+  const updateDate = (nextDate: string) => filter ? onFilterChange?.({ locationId: selectedLocationId, date: nextDate }) : setDate(nextDate);
   return <section className="catalog-page reports-page" aria-labelledby="page-title">
     <div className="page-heading"><div><p className="eyebrow">Daily ledger extracts</p><h1 id="page-title">Reports</h1></div><button type="button" className="primary-button" onClick={() => window.print()}>Print report</button></div>
     <div className="filter-row report-filters">
-      <label className="form-field compact-field">Location<select aria-label="Location" value={locationId} onChange={(event) => setLocationId(event.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
-      <label className="form-field compact-field">Report date<input aria-label="Report date" type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+      <label className="form-field compact-field">Location<select aria-label="Report location" value={selectedLocationId} onChange={(event) => updateLocation(event.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+      <label className="form-field compact-field">Report date<input aria-label="Report date" type="date" value={selectedDate} onChange={(event) => updateDate(event.target.value)} /></label>
     </div>
     {error && <p role="alert" className="field-error">{error}</p>}
     {!profit || !valuation || !sales || !movements || !discrepancies || !lowStock ? <p role="status">Loading reports…</p> : <>
@@ -57,6 +64,23 @@ export default function ReportsPage({ api = getInventoryApi() }: { api?: Invento
         { key: 'time', label: 'Time', render: (row) => new Date(`${row.occurredAt.replace(' ', 'T')}Z`).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila' }) },
         { key: 'product', label: 'Product', render: (row) => row.productName }, { key: 'type', label: 'Movement', render: (row) => row.movementType.replaceAll('_', ' ') },
         { key: 'quantity', label: 'Pieces', numeric: true, render: (row) => row.quantityPieces },
+      ]} />
+      <h2 className="report-section-title">Stock valuation</h2>
+      <p className="report-note">Valuation uses the current product purchase cost for stock on the selected date; historical product costs are not stored.</p>
+      <DataTable label="Stock valuation details" rows={valuation.items} rowKey={(row) => `${row.locationId}-${row.productId}`} columns={[
+        { key: 'product', label: 'Product', render: (row) => row.productName }, { key: 'pieces', label: 'On hand', numeric: true, render: (row) => row.quantityPieces },
+        { key: 'value', label: 'Stock value', numeric: true, render: (row) => peso(row.valueCentavos) },
+      ]} />
+      <h2 className="report-section-title">Stock count discrepancies</h2>
+      <DataTable label="Stock count discrepancies" rows={discrepancies.items} rowKey={(row) => `${row.countedAt}-${row.locationId}-${row.productId}`} columns={[
+        { key: 'time', label: 'Counted at', render: (row) => new Date(`${row.countedAt.replace(' ', 'T')}Z`).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) },
+        { key: 'product', label: 'Product', render: (row) => row.productName }, { key: 'expected', label: 'Expected', numeric: true, render: (row) => row.expectedPieces },
+        { key: 'counted', label: 'Counted', numeric: true, render: (row) => row.countedPieces }, { key: 'difference', label: 'Variance', numeric: true, render: (row) => row.differencePieces },
+      ]} />
+      <h2 className="report-section-title">Low stock</h2>
+      <DataTable label="Low stock details" rows={lowStock.items} rowKey={(row) => `${row.locationId}-${row.productId}`} columns={[
+        { key: 'product', label: 'Product', render: (row) => row.productName }, { key: 'quantity', label: 'On hand', numeric: true, render: (row) => row.quantityPieces },
+        { key: 'threshold', label: 'Threshold', numeric: true, render: (row) => row.lowStockThresholdPieces },
       ]} />
     </>}
   </section>;

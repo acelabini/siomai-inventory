@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryApi } from '../../src/shared/contracts';
+import App from '../../src/renderer/App';
 import DashboardPage from '../../src/renderer/pages/DashboardPage';
 import ReportsPage from '../../src/renderer/pages/ReportsPage';
 
@@ -59,5 +60,42 @@ describe('dashboard and reports', () => {
     await waitFor(() => expect(api.getProfitReport).toHaveBeenLastCalledWith({ locationId: 'branch', date: '2026-10-06' }));
     fireEvent.click(screen.getByRole('button', { name: /print report/i }));
     expect(print).toHaveBeenCalledOnce();
+  });
+
+  it('keeps shared location and Manila date context across navigation and page filters', async () => {
+    const api = makeApi({ getSetupState: vi.fn().mockResolvedValue({ complete: true, businessName: 'Cart ni Ate', locations: [], sampleProducts: [] }) });
+    render(<App api={api} />);
+    const globalLocation = await screen.findByLabelText(/current location/i);
+    const globalDate = screen.getByLabelText(/global business date/i);
+    expect((globalLocation as HTMLSelectElement).value).toBe('main');
+    fireEvent.change(globalLocation, { target: { value: 'branch' } });
+    fireEvent.change(globalDate, { target: { value: '2026-10-06' } });
+    await waitFor(() => expect(api.getDashboard).toHaveBeenLastCalledWith({ locationId: 'branch', date: '2026-10-06' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reports' }));
+    await waitFor(() => expect(api.getProfitReport).toHaveBeenLastCalledWith({ locationId: 'branch', date: '2026-10-06' }));
+    fireEvent.change(screen.getByLabelText(/report location/i), { target: { value: 'main' } });
+    expect((globalLocation as HTMLSelectElement).value).toBe('main');
+    expect((globalDate as HTMLInputElement).value).toBe('2026-10-06');
+    expect(screen.getByRole('complementary', { name: /main navigation/i })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
+    expect(screen.getByRole('main')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+    await waitFor(() => expect(api.getDashboard).toHaveBeenLastCalledWith({ locationId: 'main', date: '2026-10-06' }));
+  });
+
+  it('shows valuation, discrepancy, and low-stock detail rows in reports', async () => {
+    const api = makeApi({
+      getValuationReport: vi.fn().mockResolvedValue({ date: '2026-10-07', totalValueCentavos: 2500, items: [{ locationId: 'main', productId: 'pork', productName: 'Siomai Pork', quantityPieces: 25, valueCentavos: 2500 }] }),
+      getDiscrepancyReport: vi.fn().mockResolvedValue({ date: '2026-10-07', count: 1, items: [{ locationId: 'main', productId: 'pork', productName: 'Siomai Pork', expectedPieces: 28, countedPieces: 25, differencePieces: -3, countedAt: '2026-10-06 18:00:00' }] }),
+      getLowStockReport: vi.fn().mockResolvedValue({ date: '2026-10-07', count: 1, items: [{ locationId: 'main', productId: 'pork', productName: 'Siomai Pork', quantityPieces: 3, lowStockThresholdPieces: 10 }] }),
+    });
+    render(<ReportsPage api={api} />);
+    expect(await screen.findByRole('table', { name: /stock valuation details/i })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /siomai pork.*25.*₱25.00/i })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: /stock count discrepancies/i })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /siomai pork.*28.*25.*-3/i })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: /low stock details/i })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /siomai pork.*3.*10/i })).toBeInTheDocument();
+    expect(screen.getByText(/current product purchase cost/i)).toBeInTheDocument();
   });
 });

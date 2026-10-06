@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { InventoryApi } from '../shared/contracts';
+import type { CatalogLocation } from '../shared/schemas';
 import { getInventoryApi } from './api';
 import LocationsPage from './pages/LocationsPage';
 import InventoryPage from './pages/InventoryPage';
@@ -14,15 +15,35 @@ import ReportsPage from './pages/ReportsPage';
 import AppShell from './components/AppShell';
 import './styles.css';
 
+function manilaToday(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
 export default function App({ api = getInventoryApi() }: { api?: InventoryApi } = {}) {
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
   const [view, setView] = useState('Dashboard');
+  const [locations, setLocations] = useState<CatalogLocation[]>([]);
+  const [locationId, setLocationId] = useState('');
+  const [businessDate, setBusinessDate] = useState(manilaToday);
 
   useEffect(() => {
     let mounted = true;
     void api.getSetupState().then((state) => { if (mounted) setSetupComplete(state.complete); });
     return () => { mounted = false; };
   }, [api]);
+
+  useEffect(() => {
+    if (setupComplete !== true) return;
+    let mounted = true;
+    void api.listLocations().then((items) => {
+      if (!mounted) return;
+      setLocations(items);
+      setLocationId((current) => current || items[0]?.id || '');
+    });
+    return () => { mounted = false; };
+  }, [api, setupComplete]);
 
   if (setupComplete === null) return <main className="setup-page"><p role="status">Loading local ledger…</p></main>;
   if (!setupComplete) return <SetupPage api={api} onComplete={() => setSetupComplete(true)} />;
@@ -35,8 +56,8 @@ export default function App({ api = getInventoryApi() }: { api?: InventoryApi } 
   else if (view === 'Replenish') page = <ReplenishPage api={api} />;
   else if (view === 'Transfers') page = <TransfersPage api={api} />;
   else if (view === 'Stock count') page = <StockCountPage api={api} />;
-  else if (view === 'Reports') page = <ReportsPage api={api} />;
+  else if (view === 'Reports') page = <ReportsPage api={api} filter={{ locationId, date: businessDate, locations }} onFilterChange={(next) => { setLocationId(next.locationId); setBusinessDate(next.date); }} />;
   else if (view === 'Settings') page = <section className="catalog-page"><h1>Settings</h1><p>Local business settings will be available here.</p></section>;
-  else page = <DashboardPage api={api} onNavigate={setView} />;
-  return <AppShell page={view} onNavigate={setView}>{page}</AppShell>;
+  else page = <DashboardPage api={api} onNavigate={setView} filter={{ locationId, date: businessDate, locations }} onFilterChange={(next) => { setLocationId(next.locationId); setBusinessDate(next.date); }} />;
+  return <AppShell page={view} onNavigate={setView} locations={locations} locationId={locationId} date={businessDate} onLocationChange={setLocationId} onDateChange={setBusinessDate}>{page}</AppShell>;
 }

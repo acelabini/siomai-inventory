@@ -117,6 +117,7 @@ export class ReportService {
     })) };
   }
 
+  // Historical quantities use the ledger, while valuation uses the current catalog cost because no historical opening cost is stored.
   getValuationReport(filter: ReportFilter = {}): ValuationReport {
     const range = reportRange(filter);
     const location = locationClause(range, 'm.location_id');
