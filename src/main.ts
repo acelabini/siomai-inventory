@@ -2,6 +2,8 @@ import { app, BrowserWindow } from 'electron';
 import type { BrowserWindowConstructorOptions } from 'electron';
 import path from 'node:path';
 
+declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
+
 export function createWindowOptions(preloadPath: string): BrowserWindowConstructorOptions {
   return {
     width: 1280,
@@ -19,11 +21,17 @@ export function createWindowOptions(preloadPath: string): BrowserWindowConstruct
   };
 }
 
+export function getRendererDevServerUrl(): string | undefined {
+  return typeof MAIN_WINDOW_VITE_DEV_SERVER_URL === 'undefined'
+    ? undefined
+    : MAIN_WINDOW_VITE_DEV_SERVER_URL;
+}
+
 function createWindow(): void {
   const window = new BrowserWindow(
     createWindowOptions(path.join(__dirname, 'preload.cjs')),
   );
-  const rendererUrl = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL;
+  const rendererUrl = getRendererDevServerUrl();
 
   if (rendererUrl) {
     void window.loadURL(rendererUrl);

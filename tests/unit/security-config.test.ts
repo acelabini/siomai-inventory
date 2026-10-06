@@ -1,8 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
-import { describe, expect, it } from 'vitest';
-import { createWindowOptions } from '../../src/main';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createWindowOptions, getRendererDevServerUrl } from '../../src/main';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('Electron window security configuration', () => {
   it('isolates renderer execution and points at the supplied preload bundle', () => {
@@ -14,6 +18,12 @@ describe('Electron window security configuration', () => {
       nodeIntegration: false,
       preload: '/app/preload.js',
     });
+  });
+
+  it('uses Forge Vite’s compile-time URL for the development renderer', () => {
+    vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+
+    expect(getRendererDevServerUrl()).toBe('http://localhost:5173');
   });
 
   it('limits renderer content policy to local application assets', () => {
