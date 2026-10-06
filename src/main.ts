@@ -56,6 +56,10 @@ function createWindow(): void {
 }
 
 if (process.versions.electron) {
+  if (!app.isPackaged && process.env.SIOMAI_E2E === '1' && process.env.SIOMAI_E2E_USER_DATA) {
+    app.setPath('userData', process.env.SIOMAI_E2E_USER_DATA);
+  }
+
   void app.whenReady().then(async () => {
     const databasePath = path.join(app.getPath('userData'), 'inventory.sqlite');
     const existingDatabase = existsSync(databasePath) && statSync(databasePath).size > 0;

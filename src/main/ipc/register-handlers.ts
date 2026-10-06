@@ -116,7 +116,12 @@ export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogServic
         return { csv: exports.reportToCsv(kind, report), date: filter?.date ?? new Date().toISOString().slice(0, 10) };
       }));
     } catch (error) { return errorResult(error); }
-    const result = await dialog.showSaveDialog({ defaultPath: `${kind}-${date}.csv`, filters: [{ name: 'CSV files', extensions: ['csv'] }] });
+    const e2eExportPath = !app.isPackaged && process.env.SIOMAI_E2E === '1'
+      ? process.env.SIOMAI_E2E_EXPORT_PATH
+      : undefined;
+    const result = e2eExportPath
+      ? { canceled: false, filePath: e2eExportPath }
+      : await dialog.showSaveDialog({ defaultPath: `${kind}-${date}.csv`, filters: [{ name: 'CSV files', extensions: ['csv'] }] });
     if (result.canceled || !result.filePath) return { ok: true, data: false } satisfies RpcResult;
     try { writeFileSync(result.filePath, csv, 'utf8'); return { ok: true, data: true } satisfies RpcResult; }
     catch { return { ok: false, error: { code: 'INVALID_INPUT', message: 'The CSV export could not be saved.' } } satisfies RpcResult; }

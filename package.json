@@ -1,7 +1,7 @@
 {
   "name": "siomai-inventory",
   "productName": "Siomai Inventory",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Offline inventory ledger for a Philippine food cart",
   "main": ".vite/build/main.cjs",
   "private": true,
@@ -11,9 +11,13 @@
   "scripts": {
     "start": "electron-forge start",
     "test": "vitest run",
+    "test:e2e": "electron-forge package && playwright test tests/e2e/app.spec.ts --workers=1 --output=out/e2e-results",
+    "assets:generate": "node scripts/create-assets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "package": "electron-forge package",
+    "check:package": "node scripts/check-package.mjs",
+    "make:mac": "electron-forge make --platform=darwin --arch=universal",
     "make": "electron-forge make"
   },
   "dependencies": {
@@ -24,11 +28,12 @@
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",
-    "@electron-forge/maker-squirrel": "8.0.1",
+    "@electron-forge/maker-dmg": "^8.0.1",
     "@electron-forge/maker-zip": "8.0.1",
     "@electron-forge/plugin-auto-unpack-natives": "8.0.1",
     "@electron-forge/plugin-vite": "8.0.1",
     "@eslint/js": "^9.39.0",
+    "@playwright/test": "^1.56.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@types/better-sqlite3": "^9.6.0",

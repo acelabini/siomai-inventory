@@ -13,5 +13,5 @@
     "resolveJsonModule": true,
     "types": ["node", "vite/client", "vitest/globals"]
   },
-  "include": ["forge.config.ts", "vite.*.config.ts", "src", "tests"]
+  "include": ["forge.config.ts", "vite.*.config.ts", "vitest.config.ts", "src", "tests"]
 }
