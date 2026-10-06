@@ -50,7 +50,10 @@ function parseCsv(csv: string): { headers: string[]; rows: Row[]; errors: Import
       if (char === '\r' && text[i + 1] === '\n') i += 1;
       continue;
     }
-    if (afterQuote && char.trim() !== '') parseErrors.push({ row: table.length + 1, message: 'Unexpected text after a quoted field.' });
+    if (afterQuote && char.trim() !== '') {
+      parseErrors.push({ row: table.length + 1, message: 'Unexpected text after a quoted field.' });
+      afterQuote = false;
+    }
     field += char;
   }
   if (quoted) parseErrors.push({ row: table.length + 1, message: 'A quoted field is not closed.' });

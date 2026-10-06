@@ -63,6 +63,7 @@ describe('ImportService', () => {
       const csv = 'SKU,Name,Pieces per pack,Purchase cost (PHP),Piece price (PHP),Pack price (PHP)\nA,"Product"oops,10,10,1,9';
       const preview = service.preview({ csv, kind: 'products' });
       expect(preview.errors).toContainEqual({ row: 2, message: 'Unexpected text after a quoted field.' });
+      expect(preview.errors.filter((error) => error.row === 2 && error.message === 'Unexpected text after a quoted field.')).toHaveLength(1);
       expect(preview.fileErrors).toBe(0);
       expect(preview.invalidRows).toBe(1);
       expect(preview.validRows).toBe(0);
