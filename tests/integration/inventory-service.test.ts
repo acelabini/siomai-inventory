@@ -8,15 +8,29 @@ function createLedger() {
   const { db, cleanup } = createTestDatabase();
   migrateDatabase(db);
   const catalog = new CatalogService(db);
-  catalog.completeSetup({ businessName: 'Cart ni Ate', locationName: 'Main Cart', sampleProductIds: ['siomai-pork', 'siomai-beef'], openingStock: [] });
+  catalog.completeSetup({ businessName: 'Cart ni Ate', locationName: 'Main Cart', sampleProductIds: [], openingStock: [] });
   const [main] = catalog.listLocations();
   const branch = catalog.saveLocation({ name: 'Market Cart' });
-  const pork = catalog.listProducts().find((product) => product.id === 'siomai-pork')!;
-  const beef = catalog.listProducts().find((product) => product.id === 'siomai-beef')!;
+  const pork = catalog.saveProduct({ sku: 'SIO-PORK', name: 'Siomai Pork', piecesPerPack: 66, purchaseCostPerPackCentavos: 14600, sellingPricePerPieceCentavos: 300, sellingPricePerPackCentavos: 19000, lowStockThresholdPieces: 10 });
+  const beef = catalog.saveProduct({ sku: 'SIO-BEEF', name: 'Siomai Beef', piecesPerPack: 60, purchaseCostPerPackCentavos: 14000, sellingPricePerPieceCentavos: 300, sellingPricePerPackCentavos: 17000, lowStockThresholdPieces: 10 });
   return { db, catalog, inventory: new InventoryService(db), main, branch, pork, beef, cleanup };
 }
 
 describe('InventoryService', () => {
+  it('marks setup-created zero opening quantities as already recorded without zero movements', () => {
+    const { db, cleanup } = createTestDatabase();
+    try {
+      migrateDatabase(db);
+      const catalog = new CatalogService(db);
+      catalog.completeSetup({ businessName: 'Cart ni Ate', locationName: 'Main Cart', sampleProductIds: ['siomai-pork', 'siomai-beef'], openingStock: [] });
+      const main = catalog.listLocations()[0];
+      expect((db.prepare('SELECT COUNT(*) AS count FROM opening_stock_records WHERE location_id = ?').get(main.id) as { count: number | bigint }).count).toBe(2n);
+      expect((db.prepare('SELECT COUNT(*) AS count FROM stock_movements WHERE location_id = ? AND movement_type = ?').get(main.id, 'opening_balance') as { count: number | bigint }).count).toBe(0n);
+      const pork = catalog.listProducts().find((product) => product.id === 'siomai-pork')!;
+      expect(() => new InventoryService(db).setOpeningStock({ locationId: main.id, lines: [{ productId: pork.id, quantity: 1, unit: 'piece' }] })).toThrowError(expect.objectContaining({ code: 'OPENING_STOCK_ALREADY_SET' }));
+    } finally { cleanup(); }
+  });
+
   it('sets opening stock and keeps balances equal to signed ledger movements', () => {
     const { inventory, main, pork, cleanup } = createLedger();
     try {

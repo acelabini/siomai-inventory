@@ -136,6 +136,7 @@ export class CatalogService {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)
         `);
         const insertBalance = this.db.prepare('INSERT INTO inventory_balances (location_id, product_id, quantity_pieces) VALUES (?, ?, ?)');
+        const insertOpeningRecord = this.db.prepare('INSERT INTO opening_stock_records (location_id, product_id, quantity_pieces) VALUES (?, ?, ?)');
         const insertMovement = this.db.prepare(`
           INSERT INTO stock_movements (id, location_id, product_id, quantity_pieces, movement_type, note)
           VALUES (?, ?, ?, ?, 'opening_balance', 'First-run opening stock')
@@ -149,6 +150,7 @@ export class CatalogService {
           );
           const quantity = openingStock.get(productId) ?? 0;
           insertBalance.run(locationId, productId, quantity);
+          insertOpeningRecord.run(locationId, productId, quantity);
           if (quantity > 0) insertMovement.run(randomUUID(), locationId, productId, quantity);
         }
       }).immediate();

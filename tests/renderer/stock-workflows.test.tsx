@@ -36,6 +36,17 @@ describe('stock workflow pages', () => {
     expect(await screen.findByRole('cell', { name: '132 pc (2 packs)' })).toBeInTheDocument();
   });
 
+  it('converts UTC movement timestamps to Manila local time', async () => {
+    const api = makeApi({ getMovementHistory: vi.fn().mockResolvedValue([{
+      id: 'movement-1', locationId: 'main', productId: 'pork', productName: 'Siomai Pork',
+      quantityPieces: 10, movementType: 'replenishment', occurredAt: '2026-10-06 16:30:00',
+      relatedEntityType: 'replenishment', relatedEntityId: 'receipt-1', note: null,
+      unitCostCentavos: 14600, lineCostCentavos: 2212,
+    }]) });
+    render(<InventoryPage api={api} />);
+    expect(await screen.findByText('Oct 7, 2026, 12:30 AM')).toBeInTheDocument();
+  });
+
   it('switches replenishment units, previews pieces and total cost, then resets after success', async () => {
     const api = makeApi();
     render(<ReplenishPage api={api} />);

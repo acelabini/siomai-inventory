@@ -16,10 +16,18 @@ Added the Inventory, Replenish, Transfers, and Stock count screens and connected
 - Follow-up RED: a transfer receipt test failed because its ID had no persisted batch row. Transfer batches now persist and group the product transfer rows and movements; the focused ledger suite passed afterward.
 - First combined implementation run exposed four ledger fixture mistakes (catalog sort order and querying the wrong movement row); corrected the fixture to select stable product IDs and query the relevant product. The transfer UI test also initially queried a non-unique option; it now selects the destination field directly.
 
+### Review round 1 fixes
+
+- RED — `converts UTC movement timestamps to Manila local time`: `npx --yes --package=node@22.23.3 node "$(command -v npm)" test -- tests/renderer/stock-workflows.test.tsx -t "converts UTC movement timestamps to Manila local time"` failed because the UTC timestamp was rendered raw. For the fixture `2026-10-06 16:30:00` UTC, the hand-derived Manila display is `Oct 7, 2026, 12:30 AM`.
+- GREEN — the same focused test passed after movement timestamps were parsed as UTC and formatted explicitly with `Asia/Manila` at render time.
+- RED — `marks setup-created zero opening quantities as already recorded without zero movements`: `npx --yes --package=node@22.23.3 node "$(command -v npm)" test -- tests/integration/inventory-service.test.ts -t "marks setup-created zero opening quantities as already recorded without zero movements"` failed because setup had no opening-stock records for zero balances (`expected 2n, received 0n`).
+- GREEN — the same focused test passed after setup records each selected product’s opening quantity, including zero, without appending an invalid zero movement.
+- Covering GREEN — `npx --yes --package=node@22.23.3 node "$(command -v npm)" test -- tests/integration/inventory-service.test.ts tests/renderer/stock-workflows.test.tsx` passed 12 tests across both files.
+
 ## Verification
 
-- `npx --yes --package=node@22.23.3 node "$(command -v npm)" test -- tests/integration/inventory-service.test.ts tests/renderer/stock-workflows.test.tsx` — passed, 10 tests.
-- `npx --yes --package=node@22.23.3 node "$(command -v npm)" test` — passed, 52 tests across 8 files.
+- `npx --yes --package=node@22.23.3 node "$(command -v npm)" test -- tests/integration/inventory-service.test.ts tests/renderer/stock-workflows.test.tsx` — passed, 12 tests.
+- `npx --yes --package=node@22.23.3 node "$(command -v npm)" test` — passed, 54 tests across 8 files.
 - `npx --yes --package=node@22.23.3 node "$(command -v npm)" run typecheck` — passed.
 - `npx --yes --package=node@22.23.3 node "$(command -v npm)" run lint` — passed with zero warnings.
 
@@ -41,4 +49,4 @@ Added the Inventory, Replenish, Transfers, and Stock count screens and connected
 
 ## Commit
 
-Committed as `01713e9` (`feat: add stock ledger workflows`).
+Initial Task 4 commit: `aa14be4` (`feat: add stock ledger workflows`). Review round 1 fix: `b27583a` (`fix: mark zero setup stock and localize movements`).

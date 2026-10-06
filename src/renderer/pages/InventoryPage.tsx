@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { InventoryApi } from '../../shared/contracts';
 import type { CatalogLocation, CatalogProduct, InventoryBalance, StockMovement } from '../../shared/schemas';
 import { getInventoryApi } from '../api';
-import { formatMoney, formatQuantity, LocationSelect } from './stock-shared';
+import { formatMoney, formatMovementTimestamp, formatQuantity, LocationSelect } from './stock-shared';
 
 export default function InventoryPage({ api = getInventoryApi() }: { api?: InventoryApi }) {
   const [locations, setLocations] = useState<CatalogLocation[]>([]);
@@ -46,7 +46,7 @@ export default function InventoryPage({ api = getInventoryApi() }: { api?: Inven
     </tbody></table>{products.length === 0 && <p className="empty-note">No active products yet.</p>}</div>
     <section className="movement-panel" aria-labelledby="movement-title"><h2 id="movement-title">Recent stock movements</h2>
       {movements.length === 0 ? <p className="empty-note">No stock movements at this location.</p> : <div className="catalog-table-wrap"><table className="catalog-table"><thead><tr><th>When</th><th>Product</th><th>Movement</th><th>Quantity</th><th>Note</th></tr></thead><tbody>
-        {movements.map((movement) => <tr key={movement.id}><td>{movement.occurredAt}</td><td>{productById.get(movement.productId)?.name ?? movement.productName}</td><td>{movement.movementType.replaceAll('_', ' ')}</td><td className="mono">{movement.quantityPieces > 0 ? '+' : ''}{movement.quantityPieces} pc</td><td>{movement.note ?? '—'}</td></tr>)}
+        {movements.map((movement) => <tr key={movement.id}><td>{formatMovementTimestamp(movement.occurredAt)}</td><td>{productById.get(movement.productId)?.name ?? movement.productName}</td><td>{movement.movementType.replaceAll('_', ' ')}</td><td className="mono">{movement.quantityPieces > 0 ? '+' : ''}{movement.quantityPieces} pc</td><td>{movement.note ?? '—'}</td></tr>)}
       </tbody></table></div>}
     </section>
   </section>;
