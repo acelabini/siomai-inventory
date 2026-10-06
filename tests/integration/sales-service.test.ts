@@ -19,8 +19,8 @@ function createLedger() {
 }
 
 describe('SalesService', () => {
-  it('consolidates duplicate product lines, converts packs and pieces, and keeps centavo totals and snapshots', () => {
-    const { catalog, inventory, sales, main, pork, cleanup } = createLedger();
+  it('preserves duplicate pack and piece source lines and consolidates stock deductions', () => {
+    const { db, catalog, inventory, sales, main, pork, cleanup } = createLedger();
     try {
       inventory.setOpeningStock({ locationId: main.id, lines: [{ productId: pork.id, quantity: 30, unit: 'piece' }] });
       const receipt = sales.completeSale({ locationId: main.id, paymentCentavos: 4000, lines: [
@@ -28,10 +28,18 @@ describe('SalesService', () => {
         { productId: pork.id, quantity: 3, unit: 'piece' },
       ] });
       expect(receipt).toMatchObject({ totalCentavos: 3400, paymentCentavos: 4000, changeCentavos: 600 });
-      expect(receipt.lines).toHaveLength(1);
-      expect(receipt.lines[0]).toMatchObject({ productId: pork.id, quantityPieces: 13, lineRevenueCentavos: 3400, lineCostCentavos: 1301, balancePieces: 17 });
+      expect(receipt.lines).toHaveLength(2);
+      expect(receipt.lines).toEqual([
+        expect.objectContaining({ productId: pork.id, quantityPieces: 10, enteredUnit: 'pack', enteredQuantity: '1', unitSellingPriceCentavos: 2500, unitCostCentavos: 1001, lineRevenueCentavos: 2500, lineCostCentavos: 1001 }),
+        expect.objectContaining({ productId: pork.id, quantityPieces: 3, enteredUnit: 'piece', enteredQuantity: '3', unitSellingPriceCentavos: 300, unitCostCentavos: 1001, lineRevenueCentavos: 900, lineCostCentavos: 300 }),
+      ]);
+      expect(receipt.lines.every((line) => line.balancePieces === 17)).toBe(true);
+      expect((db.prepare('SELECT COUNT(*) AS count FROM stock_movements WHERE related_entity_id = ? AND movement_type = ?').get(receipt.id, 'sale') as { count: number | bigint }).count).toBe(1n);
       catalog.saveProduct({ id: pork.id, sku: pork.sku, name: pork.name, piecesPerPack: 10, purchaseCostPerPackCentavos: 9999, sellingPricePerPieceCentavos: 0, sellingPricePerPackCentavos: 0, lowStockThresholdPieces: 2 });
-      expect(sales.listSales({ locationId: main.id })).toEqual([expect.objectContaining({ id: receipt.id, totalCentavos: 3400, paymentCentavos: 4000, status: 'completed', lines: [expect.objectContaining({ unitSellingPriceCentavos: 261, unitCostCentavos: 1001, lineRevenueCentavos: 3400, quantityPieces: 13 })] })]);
+      expect(sales.listSales({ locationId: main.id })).toEqual([expect.objectContaining({ id: receipt.id, totalCentavos: 3400, paymentCentavos: 4000, status: 'completed', lines: [
+        expect.objectContaining({ enteredUnit: 'pack', enteredQuantity: '1', unitSellingPriceCentavos: 2500, unitCostCentavos: 1001, lineRevenueCentavos: 2500, quantityPieces: 10 }),
+        expect.objectContaining({ enteredUnit: 'piece', enteredQuantity: '3', unitSellingPriceCentavos: 300, unitCostCentavos: 1001, lineRevenueCentavos: 900, quantityPieces: 3 }),
+      ] })]);
       expect(inventory.getBalances(main.id)).toEqual([expect.objectContaining({ productId: pork.id, quantityPieces: 17 })]);
       expect(inventory.getMovementHistory({ locationId: main.id, movementType: 'sale' })).toEqual([expect.objectContaining({ quantityPieces: -13, unitCostCentavos: 1001, lineCostCentavos: 1301 })]);
     } finally { cleanup(); }

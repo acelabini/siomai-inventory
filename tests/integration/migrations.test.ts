@@ -154,7 +154,7 @@ describe('database migrations', () => {
         .all();
       expect(tables).toEqual(expect.arrayContaining(requiredTables));
       expect(db.pragma('foreign_keys', { simple: true })).toBe(1n);
-      expect(db.prepare('SELECT version FROM schema_migrations').pluck().all()).toHaveLength(2);
+      expect(db.prepare('SELECT version FROM schema_migrations').pluck().all()).toHaveLength(3);
     } finally {
       cleanup();
     }
@@ -169,7 +169,60 @@ describe('database migrations', () => {
       migrateDatabase(db);
 
       expect(db.prepare('SELECT value FROM settings WHERE key = ?').pluck().get('theme')).toBe('light');
-      expect(db.prepare('SELECT version FROM schema_migrations').pluck().all()).toHaveLength(2);
+      expect(db.prepare('SELECT version FROM schema_migrations').pluck().all()).toHaveLength(3);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('allows a sale to retain multiple input lines for the same product', () => {
+    const { db, cleanup } = createTestDatabase();
+    try {
+      migrateDatabase(db);
+      seedDatabase(db);
+      db.prepare(`INSERT INTO sale_lines (
+        id, sale_id, product_id, quantity_pieces, entered_unit, entered_quantity,
+        unit_selling_price_centavos, unit_cost_centavos, line_revenue_centavos, line_cost_centavos
+      ) VALUES ('line-2', 'sale-1', 'product-1', 2, 'piece', '2', 600, 500, 1200, 1000)`).run();
+      expect(db.prepare('SELECT id FROM sale_lines WHERE sale_id = ? ORDER BY id').pluck().all('sale-1')).toEqual(['line-1', 'line-2']);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('preserves existing sale line snapshots while rebuilding the version 2 schema', () => {
+    const { db, cleanup } = createTestDatabase();
+    try {
+      migrateDatabase(db);
+      seedDatabase(db);
+      db.exec(`
+        CREATE TABLE sale_lines_v2 (
+          id TEXT PRIMARY KEY,
+          sale_id TEXT NOT NULL REFERENCES sales(id),
+          product_id TEXT NOT NULL REFERENCES products(id),
+          quantity_pieces INTEGER NOT NULL CHECK (typeof(quantity_pieces) = 'integer' AND quantity_pieces > 0),
+          entered_unit TEXT NOT NULL CHECK (entered_unit IN ('piece', 'pack')),
+          entered_quantity TEXT NOT NULL,
+          unit_selling_price_centavos INTEGER NOT NULL CHECK (typeof(unit_selling_price_centavos) = 'integer' AND unit_selling_price_centavos >= 0),
+          unit_cost_centavos INTEGER NOT NULL CHECK (typeof(unit_cost_centavos) = 'integer' AND unit_cost_centavos >= 0),
+          line_revenue_centavos INTEGER NOT NULL CHECK (typeof(line_revenue_centavos) = 'integer' AND line_revenue_centavos >= 0),
+          line_cost_centavos INTEGER NOT NULL CHECK (typeof(line_cost_centavos) = 'integer' AND line_cost_centavos >= 0),
+          UNIQUE (sale_id, product_id)
+        );
+        INSERT INTO sale_lines_v2 SELECT * FROM sale_lines;
+        DROP TABLE sale_lines;
+        ALTER TABLE sale_lines_v2 RENAME TO sale_lines;
+        DELETE FROM schema_migrations WHERE version = 3;
+      `);
+
+      migrateDatabase(db);
+
+      expect(db.prepare('SELECT * FROM sale_lines WHERE id = ?').get('line-1')).toMatchObject({
+        id: 'line-1', sale_id: 'sale-1', product_id: 'product-1', quantity_pieces: 1n,
+        entered_unit: 'piece', entered_quantity: '1', unit_selling_price_centavos: 600n,
+        unit_cost_centavos: 500n, line_revenue_centavos: 600n, line_cost_centavos: 500n,
+      });
+      expect(db.pragma('foreign_key_check')).toEqual([]);
     } finally {
       cleanup();
     }

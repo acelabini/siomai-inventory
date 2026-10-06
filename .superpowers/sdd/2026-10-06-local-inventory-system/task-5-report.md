@@ -34,9 +34,21 @@ Run in WSL with the requested Node runner:
 ## Self-review and concerns
 
 - Verified that failures from later sale lines leave no partial sales, lines, movements, or balance changes; void failures are also transaction-scoped, and a second void is rejected.
-- Historical line revenue and cost are stored as integer snapshots and remain unchanged after catalog price/cost updates. For a single entered line, its selected price is saved directly. When duplicate product entries use mixed units, the existing `sale_lines` schema allows only one `unit_selling_price_centavos`; the implementation stores a consolidated effective unit-price snapshot while preserving the exact charged `line_revenue_centavos` and total. If later reporting must reconstruct each original pack/piece rate separately, the schema will need per-entry child rows or dedicated pack/piece snapshot fields.
+- Historical source-line revenue, cost, entered unit, entered quantity, selling price, and cost snapshots remain unchanged after catalog price/cost updates. Migration v3 removes the old one-line-per-product restriction while copying existing sale rows and snapshots unchanged.
 - Sales history uses the existing 200-row default limit and supports optional location, status, and limit filters.
 
 ## Commit
 
 `feat: add sales checkout and reversals`
+
+## Round 1 review fix
+
+Addressed the high-priority mixed-unit duplicate-line finding and the associated UI copy finding.
+
+- RED: `npm test -- tests/integration/sales-service.test.ts --reporter=dot` failed on the replacement regression with `expected ... to have a length of 2 but got 1`.
+- RED: `npm test -- tests/renderer/sale-composer.test.tsx --reporter=dot` failed because the composer could not add a second entry for an already selected product; the second source quantity input did not exist.
+- GREEN: the sale service now writes one `sale_lines` row for each source entry with its exact entered unit, quantity, selected-unit selling price, cost snapshot, revenue, and line cost. It groups by product only for the in-transaction availability check, one signed sale movement, one cached-balance deduction, and one reversal movement.
+- GREEN: the composer allows the same product to be added repeatedly, assigning stable keys to separate entries. Its checkout note now says: “Each entry keeps its entered unit, selling price, and cost snapshot.”
+- Migration v3 rebuilds `sale_lines` without the unique `(sale_id, product_id)` constraint and copies existing rows. Migration tests cover duplicate product lines and verify an existing version 2 source-line snapshot survives the rebuild with no foreign-key violations.
+- Focused verification: `npx --yes --package=node@22.23.3 node "$(command -v npm)" test -- tests/integration/sales-service.test.ts tests/integration/migrations.test.ts tests/renderer/sale-composer.test.tsx --reporter=dot` — passed, 3 files and 36 tests.
+- Final verification: `npx --yes --package=node@22.23.3 node "$(command -v npm)" test` — passed, 10 files and 70 tests; `npx --yes --package=node@22.23.3 node "$(command -v npm)" run typecheck` — passed; `npx --yes --package=node@22.23.3 node "$(command -v npm)" run lint` — passed.

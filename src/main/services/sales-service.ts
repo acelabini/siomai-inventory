@@ -79,7 +79,13 @@ export class SalesService {
     try {
       this.db.transaction(() => {
         this.requireActiveLocation(data.locationId);
-        const grouped = new Map<string, { product: ProductRow; quantityPieces: number; revenue: number; enteredUnit: 'piece' | 'pack'; enteredQuantity: number; sourceLines: number }>();
+        const grouped = new Map<string, {
+          product: ProductRow;
+          quantityPieces: number;
+          revenue: number;
+          lineCostCentavos: number;
+          sourceLines: Array<{ quantityPieces: number; enteredUnit: 'piece' | 'pack'; enteredQuantity: number; unitSellingPriceCentavos: number; unitCostCentavos: number; lineRevenueCentavos: number; lineCostCentavos: number }>;
+        }>();
         let totalCentavos = 0;
         for (const line of data.lines) {
           const product = this.requireActiveProduct(line.productId);
@@ -90,15 +96,26 @@ export class SalesService {
           const selectedPrice = line.unit === 'pack' ? packPrice : piecePrice;
           if (selectedPrice <= 0) throw new SalesError('PRICE_NOT_SET', `${product.name} has no selling price for ${line.unit}s.`);
           const revenue = line.unit === 'pack' ? packRevenue(line.quantity, selectedPrice) : multiply(quantityPieces, selectedPrice);
+          const unitCostCentavos = safeNumber(product.purchase_cost_per_pack_centavos);
+          const lineCostCentavos = proratedCost(unitCostCentavos, packSize, quantityPieces);
+          const sourceLine = {
+            quantityPieces,
+            enteredUnit: line.unit,
+            enteredQuantity: line.quantity,
+            unitSellingPriceCentavos: selectedPrice,
+            unitCostCentavos,
+            lineRevenueCentavos: revenue,
+            lineCostCentavos,
+          };
           const previous = grouped.get(line.productId);
           if (previous) {
             previous.quantityPieces += quantityPieces;
             previous.revenue += revenue;
-            previous.enteredQuantity += line.quantity;
-            previous.sourceLines += 1;
-            if (!Number.isSafeInteger(previous.quantityPieces) || !Number.isSafeInteger(previous.revenue) || !Number.isSafeInteger(previous.enteredQuantity)) throw new SalesError('INVALID_INPUT', 'The sale total exceeds the safe range.');
+            previous.lineCostCentavos += lineCostCentavos;
+            previous.sourceLines.push(sourceLine);
+            if (!Number.isSafeInteger(previous.quantityPieces) || !Number.isSafeInteger(previous.revenue) || !Number.isSafeInteger(previous.lineCostCentavos)) throw new SalesError('INVALID_INPUT', 'The sale total exceeds the safe range.');
           } else {
-            grouped.set(line.productId, { product, quantityPieces, revenue, enteredUnit: line.unit, enteredQuantity: line.quantity, sourceLines: 1 });
+            grouped.set(line.productId, { product, quantityPieces, revenue, lineCostCentavos, sourceLines: [sourceLine] });
           }
           totalCentavos += revenue;
           if (!Number.isSafeInteger(totalCentavos)) throw new SalesError('INVALID_INPUT', 'The sale total exceeds the safe range.');
@@ -111,19 +128,16 @@ export class SalesService {
           const quantityPieces = item.quantityPieces;
           const balance = this.balancePieces(data.locationId, item.product.id);
           if (balance < quantityPieces) throw new SalesError('INSUFFICIENT_STOCK', `Not enough ${item.product.name} is available.`);
-          const unitCostCentavos = safeNumber(item.product.purchase_cost_per_pack_centavos);
-          const lineCostCentavos = proratedCost(unitCostCentavos, safeNumber(item.product.pieces_per_pack), quantityPieces);
-          const unitPrice = item.sourceLines === 1
-            ? safeNumber(item.enteredUnit === 'pack' ? item.product.selling_price_per_pack_centavos : item.product.selling_price_per_piece_centavos)
-            : Math.floor(item.revenue / quantityPieces);
-          this.db.prepare(`INSERT INTO sale_lines
+          const insertSaleLine = this.db.prepare(`INSERT INTO sale_lines
             (id, sale_id, product_id, quantity_pieces, entered_unit, entered_quantity, unit_selling_price_centavos, unit_cost_centavos, line_revenue_centavos, line_cost_centavos)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-            .run(randomUUID(), id, item.product.id, quantityPieces, item.sourceLines === 1 ? item.enteredUnit : 'piece', String(item.sourceLines === 1 ? item.enteredQuantity : quantityPieces), unitPrice, unitCostCentavos, item.revenue, lineCostCentavos);
+          for (const sourceLine of item.sourceLines) {
+            insertSaleLine.run(randomUUID(), id, item.product.id, sourceLine.quantityPieces, sourceLine.enteredUnit, String(sourceLine.enteredQuantity), sourceLine.unitSellingPriceCentavos, sourceLine.unitCostCentavos, sourceLine.lineRevenueCentavos, sourceLine.lineCostCentavos);
+          }
           this.db.prepare(`INSERT INTO stock_movements
             (id, location_id, product_id, quantity_pieces, movement_type, related_entity_type, related_entity_id, note, unit_cost_centavos, line_cost_centavos)
             VALUES (?, ?, ?, ?, 'sale', 'sale', ?, ?, ?, ?)`)
-            .run(randomUUID(), data.locationId, item.product.id, -quantityPieces, id, data.note || null, unitCostCentavos, lineCostCentavos);
+            .run(randomUUID(), data.locationId, item.product.id, -quantityPieces, id, data.note || null, safeNumber(item.product.purchase_cost_per_pack_centavos), item.lineCostCentavos);
           this.applyDelta(data.locationId, item.product.id, -quantityPieces);
         }
       }).immediate();
@@ -153,7 +167,7 @@ export class SalesService {
         const sale = this.db.prepare('SELECT id, location_id, status FROM sales WHERE id = ?').get(data.saleId) as { id: string; location_id: string; status: 'completed' | 'voided' } | undefined;
         if (!sale) throw new SalesError('NOT_FOUND', 'The sale could not be found.');
         if (sale.status === 'voided') throw new SalesError('ALREADY_VOIDED', 'This sale has already been voided.');
-        const lines = this.db.prepare('SELECT product_id, quantity_pieces FROM sale_lines WHERE sale_id = ?').all(data.saleId) as Array<{ product_id: string; quantity_pieces: number | bigint }>;
+        const lines = this.db.prepare('SELECT product_id, SUM(quantity_pieces) AS quantity_pieces FROM sale_lines WHERE sale_id = ? GROUP BY product_id').all(data.saleId) as Array<{ product_id: string; quantity_pieces: number | bigint }>;
         const updated = this.db.prepare("UPDATE sales SET status = 'voided' WHERE id = ? AND status = 'completed'").run(data.saleId);
         if (updated.changes !== 1) throw new SalesError('ALREADY_VOIDED', 'This sale has already been voided.');
         for (const line of lines) {

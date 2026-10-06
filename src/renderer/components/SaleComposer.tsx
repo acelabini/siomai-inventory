@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { InventoryApi } from '../../shared/contracts';
 import type { CatalogLocation, CatalogProduct, InventoryBalance, SaleReceipt as SaleReceiptData } from '../../shared/schemas';
 import { pesosToCentavos } from '../../main/domain/money';
@@ -7,7 +7,7 @@ import { getInventoryApi } from '../api';
 import { formatMoney, formatQuantity, LocationSelect } from '../pages/stock-shared';
 import SaleReceipt from './SaleReceipt';
 
-type Line = { productId: string; quantity: string; unit: 'piece' | 'pack' };
+type Line = { id: number; productId: string; quantity: string; unit: 'piece' | 'pack' };
 type Preview = { pieces: number; revenue: number; product?: CatalogProduct; error?: string };
 
 function previewLine(line: Line, products: CatalogProduct[]): Preview {
@@ -36,6 +36,7 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
   const [receipt, setReceipt] = useState<SaleReceiptData | null>(null);
   const [saving, setSaving] = useState(false);
   const [voiding, setVoiding] = useState(false);
+  const nextLineId = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -53,7 +54,7 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
     return () => { active = false; };
   }, [api, locationId]);
 
-  const matches = useMemo(() => products.filter((product) => `${product.name} ${product.sku}`.toLowerCase().includes(search.trim().toLowerCase()) && !lines.some((line) => line.productId === product.id)), [lines, products, search]);
+  const matches = useMemo(() => products.filter((product) => `${product.name} ${product.sku}`.toLowerCase().includes(search.trim().toLowerCase())), [products, search]);
   const previews = useMemo(() => lines.map((line) => previewLine(line, products)), [lines, products]);
   const total = previews.reduce((sum, line) => sum + line.revenue, 0);
   let paid = -1;
@@ -95,10 +96,10 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
     <div className="stock-workflow-layout sale-layout">
       <form className="catalog-form stock-lines" onSubmit={(event) => { event.preventDefault(); void complete(); }}>
         <label className="form-field">Find a product<input autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or SKU" /></label>
-        {search.trim() && <div className="sale-search-results" aria-label="Product search results">{matches.length ? matches.slice(0, 8).map((product) => <button className="secondary-button" type="button" key={product.id} onClick={() => { setLines((current) => [...current, { productId: product.id, quantity: '', unit: 'piece' }]); setSearch(''); }}>{product.name} <span className="mono">{product.sku}</span></button>) : <p className="empty-note">No matching products available to add.</p>}</div>}
+        {search.trim() && <div className="sale-search-results" aria-label="Product search results">{matches.length ? matches.slice(0, 8).map((product) => <button className="secondary-button" type="button" key={product.id} onClick={() => { setLines((current) => [...current, { id: nextLineId.current++, productId: product.id, quantity: '', unit: 'piece' }]); setSearch(''); }}>{product.name} <span className="mono">{product.sku}</span></button>) : <p className="empty-note">No matching products available to add.</p>}</div>}
         {lines.map((line, index) => {
           const preview = previews[index]; const product = preview.product; const available = product ? availability.get(product.id) ?? 0 : 0;
-          return <fieldset className="stock-line sale-line" key={line.productId}><legend>{product?.name ?? 'Product'}</legend>
+          return <fieldset className="stock-line sale-line" key={line.id}><legend>{product?.name ?? 'Product'}</legend>
             <div className="quantity-row"><label className="form-field">Quantity for {product?.name}<input aria-label={`Quantity for ${product?.name}`} type="number" min="0.01" step="any" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></label>
               <label className="form-field">Unit<select aria-label={`Unit for ${product?.name}`} value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value as Line['unit'] })}><option value="piece">Piece</option><option value="pack">Pack</option></select></label></div>
             <p className="availability-note">Available: {formatQuantity(available, product?.piecesPerPack ?? 1)}</p>
@@ -112,7 +113,7 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
         {error && <p role="alert" className="field-error">{error}</p>}{success && <p role="status" className="success-note">{success}</p>}
         <button className="primary-button" type="submit" disabled={!valid || saving}>{saving ? 'Completing…' : 'Complete sale'}</button>
       </form>
-      <aside className="workflow-summary" aria-label="Sale summary"><p className="empty-kicker">CHECKOUT</p><h2>Transaction total</h2><dl><div><dt>Items</dt><dd>{previews.reduce((sum, item) => sum + item.pieces, 0)} pc</dd></div><div><dt>Total</dt><dd>{formatMoney(total)}</dd></div><div><dt>Tendered</dt><dd>{paid >= 0 ? formatMoney(paid) : '—'}</dd></div><div><dt>Change</dt><dd>{paid >= total && total > 0 ? formatMoney(paid - total) : '—'}</dd></div></dl><p>Pack and piece prices are saved with this sale as a permanent snapshot.</p></aside>
+      <aside className="workflow-summary" aria-label="Sale summary"><p className="empty-kicker">CHECKOUT</p><h2>Transaction total</h2><dl><div><dt>Items</dt><dd>{previews.reduce((sum, item) => sum + item.pieces, 0)} pc</dd></div><div><dt>Total</dt><dd>{formatMoney(total)}</dd></div><div><dt>Tendered</dt><dd>{paid >= 0 ? formatMoney(paid) : '—'}</dd></div><div><dt>Change</dt><dd>{paid >= total && total > 0 ? formatMoney(paid - total) : '—'}</dd></div></dl><p>Each entry keeps its entered unit, selling price, and cost snapshot.</p></aside>
     </div>
     {renderReceipt && receipt && <SaleReceipt receipt={receipt} onVoid={voidReceipt} voiding={voiding} />}
   </section>;

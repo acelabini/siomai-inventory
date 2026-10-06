@@ -32,12 +32,34 @@ describe('sale composer', () => {
     render(<SaleComposer api={makeApi()} />);
     const search = await screen.findByLabelText(/find a product/i);
     fireEvent.change(search, { target: { value: 'pork' } });
-    fireEvent.click(screen.getByRole('button', { name: /siomai pork/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Siomai Pork PORK' }));
     await waitForAvailability('25 pc');
     fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '1' } });
     fireEvent.change(screen.getByLabelText(/unit for siomai pork/i), { target: { value: 'pack' } });
     expect(screen.getByText(/available: 25 pc/i)).toBeInTheDocument();
     expect(screen.getAllByText('₱25.00')).toHaveLength(2);
+  });
+
+  it('keeps separate source entries when one product is added in pack and piece units', async () => {
+    const api = makeApi();
+    render(<SaleComposer api={api} />);
+    const search = await screen.findByLabelText(/find a product/i);
+    fireEvent.change(search, { target: { value: 'pork' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Siomai Pork PORK' }));
+    await waitForAvailability('25 pc');
+    fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText(/unit for siomai pork/i), { target: { value: 'pack' } });
+    fireEvent.change(search, { target: { value: 'pork' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Siomai Pork PORK' }));
+    const quantities = await screen.findAllByLabelText(/quantity for siomai pork/i);
+    expect(quantities).toHaveLength(2);
+    fireEvent.change(quantities[1], { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('Amount tendered'), { target: { value: '34' } });
+    fireEvent.click(screen.getByRole('button', { name: /complete sale/i }));
+    await waitFor(() => expect(api.completeSale).toHaveBeenCalledWith({ locationId: 'main', paymentCentavos: 3400, note: undefined, lines: [
+      { productId: 'pork', quantity: 1, unit: 'pack' },
+      { productId: 'pork', quantity: 3, unit: 'piece' },
+    ] }));
   });
 
   it('removes lines and computes payment change before completing the sale', async () => {

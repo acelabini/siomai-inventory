@@ -180,6 +180,32 @@ const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 3,
+    name: 'preserve_duplicate_sale_source_lines',
+    sql: `
+      CREATE TABLE sale_lines_rebuilt (
+        id TEXT PRIMARY KEY,
+        sale_id TEXT NOT NULL REFERENCES sales(id),
+        product_id TEXT NOT NULL REFERENCES products(id),
+        quantity_pieces INTEGER NOT NULL CHECK (typeof(quantity_pieces) = 'integer' AND quantity_pieces > 0),
+        entered_unit TEXT NOT NULL CHECK (entered_unit IN ('piece', 'pack')),
+        entered_quantity TEXT NOT NULL,
+        unit_selling_price_centavos INTEGER NOT NULL CHECK (typeof(unit_selling_price_centavos) = 'integer' AND unit_selling_price_centavos >= 0),
+        unit_cost_centavos INTEGER NOT NULL CHECK (typeof(unit_cost_centavos) = 'integer' AND unit_cost_centavos >= 0),
+        line_revenue_centavos INTEGER NOT NULL CHECK (typeof(line_revenue_centavos) = 'integer' AND line_revenue_centavos >= 0),
+        line_cost_centavos INTEGER NOT NULL CHECK (typeof(line_cost_centavos) = 'integer' AND line_cost_centavos >= 0)
+      );
+      INSERT INTO sale_lines_rebuilt (
+        id, sale_id, product_id, quantity_pieces, entered_unit, entered_quantity,
+        unit_selling_price_centavos, unit_cost_centavos, line_revenue_centavos, line_cost_centavos
+      ) SELECT id, sale_id, product_id, quantity_pieces, entered_unit, entered_quantity,
+        unit_selling_price_centavos, unit_cost_centavos, line_revenue_centavos, line_cost_centavos
+        FROM sale_lines;
+      DROP TABLE sale_lines;
+      ALTER TABLE sale_lines_rebuilt RENAME TO sale_lines;
+    `,
+  },
 ];
 
 export function migrateDatabase(db: Database.Database): void {
