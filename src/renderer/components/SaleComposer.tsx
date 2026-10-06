@@ -22,11 +22,13 @@ function previewLine(line: Line, products: CatalogProduct[]): Preview {
   } catch (error) { return { pieces: 0, revenue: 0, product, error: error instanceof Error ? error.message : 'Enter a valid quantity.' }; }
 }
 
-export default function SaleComposer({ api = getInventoryApi(), onCompleted, onVoid, renderReceipt = true }: { api?: InventoryApi; onCompleted?: (receipt: SaleReceiptData) => void; onVoid?: (receipt: SaleReceiptData, reason: string) => void | Promise<void>; renderReceipt?: boolean }) {
+export default function SaleComposer({ api = getInventoryApi(), onCompleted, onVoid, renderReceipt = true, activeLocationId, onLocationChange }: { api?: InventoryApi; onCompleted?: (receipt: SaleReceiptData) => void; onVoid?: (receipt: SaleReceiptData, reason: string) => void | Promise<void>; renderReceipt?: boolean; activeLocationId?: string; onLocationChange?: (locationId: string) => void }) {
   const [locations, setLocations] = useState<CatalogLocation[]>([]);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [locationId, setLocationId] = useState('');
+  const selectedLocationId = activeLocationId ?? locationId;
+  const updateLocation = (value: string) => activeLocationId === undefined ? setLocationId(value) : onLocationChange?.(value);
   const [search, setSearch] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
   const [tendered, setTendered] = useState('');
@@ -42,17 +44,18 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
     let active = true;
     void Promise.all([api.listLocations(), api.listProducts()]).then(([nextLocations, nextProducts]) => {
       if (!active) return;
-      setLocations(nextLocations); setProducts(nextProducts); setLocationId(nextLocations[0]?.id ?? '');
+      setLocations(nextLocations); setProducts(nextProducts);
+      if (activeLocationId === undefined) setLocationId(nextLocations[0]?.id ?? '');
     }).catch(() => { if (active) setError('Products and locations could not be loaded.'); });
     return () => { active = false; };
   }, [api]);
 
   useEffect(() => {
-    if (!locationId) return;
+    if (!selectedLocationId) return;
     let active = true;
-    void api.getBalances(locationId).then((value) => { if (active) setBalances(value); }).catch(() => { if (active) setError('Current availability could not be loaded.'); });
+    void api.getBalances(selectedLocationId).then((value) => { if (active) setBalances(value); }).catch(() => { if (active) setError('Current availability could not be loaded.'); });
     return () => { active = false; };
-  }, [api, locationId]);
+  }, [api, selectedLocationId]);
 
   const matches = useMemo(() => products.filter((product) => `${product.name} ${product.sku}`.toLowerCase().includes(search.trim().toLowerCase())), [products, search]);
   const previews = useMemo(() => lines.map((line) => previewLine(line, products)), [lines, products]);
@@ -67,13 +70,13 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
   }
 
   async function complete() {
-    if (!valid || !locationId || paid < 0) return;
+    if (!valid || !selectedLocationId || paid < 0) return;
     setError(''); setSuccess(''); setSaving(true);
     try {
-      const result = await api.completeSale({ locationId, paymentCentavos: paid, note: note.trim() || undefined, lines: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity), unit: line.unit })) });
+      const result = await api.completeSale({ locationId: selectedLocationId, paymentCentavos: paid, note: note.trim() || undefined, lines: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity), unit: line.unit })) });
       setReceipt(result); setLines([]); setSearch(''); setTendered(''); setNote(''); setSuccess('Sale completed.');
       onCompleted?.(result);
-      try { setBalances(await api.getBalances(locationId)); }
+      try { setBalances(await api.getBalances(selectedLocationId)); }
       catch { setError('Sale completed, but current availability could not be refreshed.'); }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The sale could not be completed.'); }
     finally { setSaving(false); }
@@ -85,14 +88,14 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
     try {
       if (onVoid) await onVoid(receipt, reason);
       else setReceipt(await api.voidSale(receipt.id, reason));
-      setBalances(await api.getBalances(locationId));
+      setBalances(await api.getBalances(selectedLocationId));
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'The sale could not be voided.'); }
     finally { setVoiding(false); }
   }
 
   return <section className="catalog-page" aria-labelledby="sales-title">
-    <div className="page-heading"><div><p className="eyebrow">DAILY LEDGER · STOCK OUT</p><h1 id="sales-title">New sale</h1></div>{locations.length > 0 && <LocationSelect locations={locations} value={locationId} onChange={setLocationId} />}</div>
+    <div className="page-heading"><div><p className="eyebrow">DAILY LEDGER · STOCK OUT</p><h1 id="sales-title">New sale</h1></div>{locations.length > 0 && <LocationSelect locations={locations} value={selectedLocationId} onChange={updateLocation} />}</div>
     <div className="stock-workflow-layout sale-layout">
       <form className="catalog-form stock-lines" onSubmit={(event) => { event.preventDefault(); void complete(); }}>
         <label className="form-field">Find a product<input autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or SKU" /></label>

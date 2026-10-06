@@ -17,11 +17,13 @@ function linePreview(line: Line, products: CatalogProduct[]) {
   } catch { return { pieces: 0, cost: 0, product }; }
 }
 
-export default function ReplenishPage({ api = getInventoryApi() }: { api?: InventoryApi }) {
+export default function ReplenishPage({ api = getInventoryApi(), activeLocationId, onLocationChange }: { api?: InventoryApi; activeLocationId?: string; onLocationChange?: (locationId: string) => void }) {
   const [locations, setLocations] = useState<CatalogLocation[]>([]);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [locationId, setLocationId] = useState('');
+  const selectedLocationId = activeLocationId ?? locationId;
+  const updateLocation = (value: string) => activeLocationId === undefined ? setLocationId(value) : onLocationChange?.(value);
   const [lines, setLines] = useState<Line[]>([blankLine()]);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
@@ -31,18 +33,19 @@ export default function ReplenishPage({ api = getInventoryApi() }: { api?: Inven
     let active = true;
     void Promise.all([api.listLocations(), api.listProducts()]).then(([nextLocations, nextProducts]) => {
       if (!active) return;
-      setLocations(nextLocations); setProducts(nextProducts); setLocationId(nextLocations[0]?.id ?? '');
+      setLocations(nextLocations); setProducts(nextProducts);
+      if (activeLocationId === undefined) setLocationId(nextLocations[0]?.id ?? '');
       setLines([blankLine(nextProducts[0]?.id ?? '')]);
     }).catch(() => { if (active) setError('Products and locations could not be loaded.'); });
     return () => { active = false; };
   }, [api]);
 
   useEffect(() => {
-    if (!locationId) return;
+    if (!selectedLocationId) return;
     let active = true;
-    void api.getBalances(locationId).then((value) => { if (active) setBalances(value); }).catch(() => { if (active) setError('Current availability could not be loaded.'); });
+    void api.getBalances(selectedLocationId).then((value) => { if (active) setBalances(value); }).catch(() => { if (active) setError('Current availability could not be loaded.'); });
     return () => { active = false; };
-  }, [api, locationId]);
+  }, [api, selectedLocationId]);
 
   const previews = useMemo(() => lines.map((line) => linePreview(line, products)), [lines, products]);
   const totalCost = previews.reduce((sum, preview) => sum + preview.cost, 0);
@@ -54,11 +57,11 @@ export default function ReplenishPage({ api = getInventoryApi() }: { api?: Inven
 
   async function submit() {
     setError(''); setSuccess('');
-    if (!valid || !locationId) { setError('Enter a positive quantity for each product and use each product once.'); return; }
+    if (!valid || !selectedLocationId) { setError('Enter a positive quantity for each product and use each product once.'); return; }
     try {
-      await api.recordReplenishment({ locationId, note: note.trim() || undefined, lines: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity), unit: line.unit })) });
+      await api.recordReplenishment({ locationId: selectedLocationId, note: note.trim() || undefined, lines: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity), unit: line.unit })) });
       setLines([blankLine(products[0]?.id ?? '')]); setNote(''); setSuccess('Replenishment recorded.');
-      setBalances(await api.getBalances(locationId));
+      setBalances(await api.getBalances(selectedLocationId));
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Replenishment could not be recorded.'); }
   }
 
@@ -67,7 +70,7 @@ export default function ReplenishPage({ api = getInventoryApi() }: { api?: Inven
     <div className="page-heading"><div><p className="eyebrow">STOCK IN</p><h1 id="replenish-title">Replenish stock</h1></div></div>
     <div className="stock-workflow-layout">
       <form className="catalog-form stock-lines" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-        {locations.length > 0 && <LocationSelect locations={locations} value={locationId} onChange={setLocationId} />}
+        {locations.length > 0 && <LocationSelect locations={locations} value={selectedLocationId} onChange={updateLocation} />}
         {lines.map((line, index) => {
           const preview = previews[index];
           const current = availability.get(line.productId) ?? 0;
@@ -83,7 +86,7 @@ export default function ReplenishPage({ api = getInventoryApi() }: { api?: Inven
         {products.length > lines.length && <button className="secondary-button" type="button" onClick={() => setLines((current) => [...current, blankLine(products.find((product) => !current.some((line) => line.productId === product.id))?.id ?? '')])}>Add another product</button>}
         <label className="form-field">Note<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
         {error && <p role="alert" className="field-error">{error}</p>}{success && <p role="status" className="success-note">{success}</p>}
-        <button className="primary-button" type="submit" disabled={!valid}>Record replenishment</button>
+        <button className="primary-button" type="submit" disabled={!valid || !selectedLocationId}>Record replenishment</button>
       </form>
       <aside className="workflow-summary" aria-label="Replenishment summary"><p className="empty-kicker">CONFIRMATION</p><h2>Stock received</h2><dl><div><dt>Products</dt><dd>{lines.filter((line, index) => previews[index].pieces > 0).length}</dd></div><div><dt>Total pieces</dt><dd>{previews.reduce((sum, preview) => sum + preview.pieces, 0)}</dd></div><div><dt>Total cost</dt><dd>{formatMoney(totalCost)}</dd></div></dl><p>Each line keeps the current purchase cost as a ledger snapshot.</p></aside>
     </div>

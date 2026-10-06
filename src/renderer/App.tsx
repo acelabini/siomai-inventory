@@ -49,13 +49,13 @@ export default function App({ api = getInventoryApi() }: { api?: InventoryApi } 
   if (!setupComplete) return <SetupPage api={api} onComplete={() => setSetupComplete(true)} />;
 
   let page;
-  if (view === 'Sales') page = <SalesPage api={api} />;
+  if (view === 'Sales') page = <SalesPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} />;
   else if (view === 'Products') page = <ProductsPage api={api} />;
   else if (view === 'Locations') page = <LocationsPage api={api} />;
-  else if (view === 'Inventory') page = <InventoryPage api={api} />;
-  else if (view === 'Replenish') page = <ReplenishPage api={api} />;
-  else if (view === 'Transfers') page = <TransfersPage api={api} />;
-  else if (view === 'Stock count') page = <StockCountPage api={api} />;
+  else if (view === 'Inventory') page = <InventoryPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} />;
+  else if (view === 'Replenish') page = <ReplenishPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} />;
+  else if (view === 'Transfers') page = <TransfersPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} />;
+  else if (view === 'Stock count') page = <StockCountPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} />;
   else if (view === 'Reports') page = <ReportsPage api={api} filter={{ locationId, date: businessDate, locations }} onFilterChange={(next) => { setLocationId(next.locationId); setBusinessDate(next.date); }} />;
   else if (view === 'Settings') page = <section className="catalog-page"><h1>Settings</h1><p>Local business settings will be available here.</p></section>;
   else page = <DashboardPage api={api} onNavigate={setView} filter={{ locationId, date: businessDate, locations }} onFilterChange={(next) => { setLocationId(next.locationId); setBusinessDate(next.date); }} />;

@@ -65,16 +65,16 @@ describe('dashboard and reports', () => {
   it('keeps shared location and Manila date context across navigation and page filters', async () => {
     const api = makeApi({ getSetupState: vi.fn().mockResolvedValue({ complete: true, businessName: 'Cart ni Ate', locations: [], sampleProducts: [] }) });
     render(<App api={api} />);
-    const globalLocation = await screen.findByLabelText(/current location/i);
+    const globalLocation = await screen.findByLabelText(/current location/i) as HTMLSelectElement;
     const globalDate = screen.getByLabelText(/global business date/i);
-    expect((globalLocation as HTMLSelectElement).value).toBe('main');
+    await waitFor(() => expect(globalLocation.value).toBe('main'));
     fireEvent.change(globalLocation, { target: { value: 'branch' } });
     fireEvent.change(globalDate, { target: { value: '2026-10-06' } });
     await waitFor(() => expect(api.getDashboard).toHaveBeenLastCalledWith({ locationId: 'branch', date: '2026-10-06' }));
     fireEvent.click(screen.getByRole('button', { name: 'Reports' }));
     await waitFor(() => expect(api.getProfitReport).toHaveBeenLastCalledWith({ locationId: 'branch', date: '2026-10-06' }));
     fireEvent.change(screen.getByLabelText(/report location/i), { target: { value: 'main' } });
-    expect((globalLocation as HTMLSelectElement).value).toBe('main');
+    expect(globalLocation.value).toBe('main');
     expect((globalDate as HTMLInputElement).value).toBe('2026-10-06');
     expect(screen.getByRole('complementary', { name: /main navigation/i })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
@@ -97,5 +97,28 @@ describe('dashboard and reports', () => {
     expect(screen.getByRole('table', { name: /low stock details/i })).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /siomai pork.*3.*10/i })).toBeInTheDocument();
     expect(screen.getByText(/current product purchase cost/i)).toBeInTheDocument();
+  });
+
+  it('uses the app active location across sales and every location-aware stock workflow', async () => {
+    const api = makeApi({
+      getSetupState: vi.fn().mockResolvedValue({ complete: true, businessName: 'Cart ni Ate', locations: [], sampleProducts: [] }),
+      getBalances: vi.fn().mockResolvedValue([]),
+    });
+    render(<App api={api} />);
+    const globalLocation = await screen.findByLabelText(/current location/i) as HTMLSelectElement;
+    await waitFor(() => expect(globalLocation.value).toBe('main'));
+    fireEvent.change(globalLocation, { target: { value: 'branch' } });
+
+    for (const workflow of ['Sales', 'Inventory', 'Replenish', 'Transfers', 'Stock count']) {
+      const callCount = (api.getBalances as ReturnType<typeof vi.fn>).mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: workflow }));
+      await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(callCount + 1));
+      expect(api.getBalances).toHaveBeenLastCalledWith('branch');
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Transfers' }));
+    fireEvent.change(await screen.findByLabelText(/source location/i), { target: { value: 'main' } });
+    expect(globalLocation.value).toBe('main');
+    await waitFor(() => expect(api.getBalances).toHaveBeenLastCalledWith('main'));
   });
 });

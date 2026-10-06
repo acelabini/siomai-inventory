@@ -6,15 +6,15 @@ import SaleComposer from '../components/SaleComposer';
 import SaleReceipt from '../components/SaleReceipt';
 import { formatMoney, formatMovementTimestamp } from './stock-shared';
 
-export default function SalesPage({ api = getInventoryApi() }: { api?: InventoryApi }) {
+export default function SalesPage({ api = getInventoryApi(), activeLocationId, onLocationChange }: { api?: InventoryApi; activeLocationId?: string; onLocationChange?: (locationId: string) => void }) {
   const [sales, setSales] = useState<SaleSummary[]>([]);
   const [selected, setSelected] = useState<SaleSummary | null>(null);
   const [error, setError] = useState('');
 
   const refresh = useCallback(async () => {
-    try { setSales(await api.listSales()); setError(''); }
+    try { setSales(await api.listSales(activeLocationId ? { locationId: activeLocationId } : undefined)); setError(''); }
     catch { setError('Sales history could not be loaded.'); }
-  }, [api]);
+  }, [api, activeLocationId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -30,7 +30,7 @@ export default function SalesPage({ api = getInventoryApi() }: { api?: Inventory
   }
 
   return <>
-    <SaleComposer api={api} onCompleted={(receipt) => { void complete(receipt); }} onVoid={voidSale} renderReceipt={false} />
+    <SaleComposer api={api} activeLocationId={activeLocationId} onLocationChange={onLocationChange} onCompleted={(receipt) => { void complete(receipt); }} onVoid={voidSale} renderReceipt={false} />
     <section className="catalog-page sale-history" aria-labelledby="sales-history-title">
       <div className="page-heading"><div><p className="eyebrow">TRANSACTION LOG</p><h2 id="sales-history-title">Recent sales</h2></div></div>
       {error && <p role="alert" className="field-error">{error}</p>}

@@ -4,37 +4,40 @@ import type { CatalogLocation, CatalogProduct, InventoryBalance, StockMovement }
 import { getInventoryApi } from '../api';
 import { formatMoney, formatMovementTimestamp, formatQuantity, LocationSelect } from './stock-shared';
 
-export default function InventoryPage({ api = getInventoryApi() }: { api?: InventoryApi }) {
+export default function InventoryPage({ api = getInventoryApi(), activeLocationId, onLocationChange }: { api?: InventoryApi; activeLocationId?: string; onLocationChange?: (locationId: string) => void }) {
   const [locations, setLocations] = useState<CatalogLocation[]>([]);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [locationId, setLocationId] = useState('');
+  const selectedLocationId = activeLocationId ?? locationId;
+  const updateLocation = (value: string) => activeLocationId === undefined ? setLocationId(value) : onLocationChange?.(value);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
     void Promise.all([api.listLocations(), api.listProducts()]).then(([nextLocations, nextProducts]) => {
       if (!active) return;
-      setLocations(nextLocations); setProducts(nextProducts); setLocationId(nextLocations[0]?.id ?? '');
+      setLocations(nextLocations); setProducts(nextProducts);
+      if (activeLocationId === undefined) setLocationId(nextLocations[0]?.id ?? '');
     }).catch(() => { if (active) setError('Inventory could not be loaded.'); });
     return () => { active = false; };
   }, [api]);
 
   useEffect(() => {
-    if (!locationId) return;
+    if (!selectedLocationId) return;
     let active = true;
-    void Promise.all([api.getBalances(locationId), api.getMovementHistory({ locationId, limit: 40 })]).then(([nextBalances, nextMovements]) => {
+    void Promise.all([api.getBalances(selectedLocationId), api.getMovementHistory({ locationId: selectedLocationId, limit: 40 })]).then(([nextBalances, nextMovements]) => {
       if (active) { setBalances(nextBalances); setMovements(nextMovements); }
     }).catch(() => { if (active) setError('Inventory could not be loaded.'); });
     return () => { active = false; };
-  }, [api, locationId]);
+  }, [api, selectedLocationId]);
 
   const quantityByProduct = new Map(balances.map((balance) => [balance.productId, balance.quantityPieces]));
   const productById = new Map(products.map((product) => [product.id, product]));
   return <section className="ledger-page" aria-labelledby="inventory-title">
     <div className="page-heading"><div><p className="eyebrow">STOCK LEDGER</p><h1 id="inventory-title">Inventory</h1></div>
-      {locations.length > 0 && <LocationSelect locations={locations} value={locationId} onChange={setLocationId} />}</div>
+      {locations.length > 0 && <LocationSelect locations={locations} value={selectedLocationId} onChange={updateLocation} />}</div>
     <div className="ledger-ribbon" aria-label="Stock movement sequence"><span>Opening</span><span aria-hidden="true">→</span><span>Replenished</span><span aria-hidden="true">→</span><span>Sold</span><span aria-hidden="true">→</span><strong>On hand</strong></div>
     {error && <p className="field-error" role="alert">{error}</p>}
     <div className="catalog-table-wrap inventory-table-wrap"><table className="catalog-table"><thead><tr><th>Product</th><th>SKU</th><th>On hand</th><th>Low stock at</th><th>Stock value</th></tr></thead><tbody>
