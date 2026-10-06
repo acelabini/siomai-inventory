@@ -102,14 +102,20 @@ export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogServic
     const parsed = reportExportSchema.safeParse(input);
     if (!parsed.success) return errorResult(new CatalogError('INVALID_INPUT', 'The export details are invalid.'));
     const { kind, filter } = parsed.data;
-    const report = kind === 'profit' ? reports.getProfitReport(filter)
-      : kind === 'sales' ? reports.getSalesReport(filter)
-        : kind === 'movements' ? reports.getMovementReport(filter)
-          : kind === 'valuation' ? reports.getValuationReport(filter)
-            : kind === 'discrepancies' ? reports.getDiscrepancyReport(filter)
-              : reports.getLowStockReport(filter);
-    const csv = exports.reportToCsv(kind, report);
-    const date = filter?.date ?? new Date().toISOString().slice(0, 10);
+    let csv: string;
+    let date: string;
+    try {
+      ({ csv, date } = await operationLock.runExclusive(() => {
+        if (backups.isRestoreCommitted) throw new BackupError('RECOVERY_REQUIRED', 'The restored database is ready. Relaunch the application to continue.');
+        const report = kind === 'profit' ? reports.getProfitReport(filter)
+          : kind === 'sales' ? reports.getSalesReport(filter)
+            : kind === 'movements' ? reports.getMovementReport(filter)
+              : kind === 'valuation' ? reports.getValuationReport(filter)
+                : kind === 'discrepancies' ? reports.getDiscrepancyReport(filter)
+                  : reports.getLowStockReport(filter);
+        return { csv: exports.reportToCsv(kind, report), date: filter?.date ?? new Date().toISOString().slice(0, 10) };
+      }));
+    } catch (error) { return errorResult(error); }
     const result = await dialog.showSaveDialog({ defaultPath: `${kind}-${date}.csv`, filters: [{ name: 'CSV files', extensions: ['csv'] }] });
     if (result.canceled || !result.filePath) return { ok: true, data: false } satisfies RpcResult;
     try { writeFileSync(result.filePath, csv, 'utf8'); return { ok: true, data: true } satisfies RpcResult; }

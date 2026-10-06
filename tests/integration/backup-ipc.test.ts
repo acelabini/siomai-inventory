@@ -2,13 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IpcMain } from 'electron';
 
 const electronMock = vi.hoisted(() => ({
-  showOpenDialog: vi.fn(), showMessageBox: vi.fn(), relaunch: vi.fn(), exit: vi.fn(),
+  showOpenDialog: vi.fn(), showMessageBox: vi.fn(), showSaveDialog: vi.fn(), relaunch: vi.fn(), exit: vi.fn(),
 }));
 vi.mock('electron', () => ({ app: { relaunch: electronMock.relaunch, exit: electronMock.exit }, dialog: electronMock }));
 
 import { registerCatalogHandlers } from '../../src/main/ipc/register-handlers';
 
-function handlersFor(backups: object) {
+function handlersFor(backups: object, reports: object = {}, exports: object = {}, operationLock = { runExclusive: (fn: () => unknown) => fn() }) {
   const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
   const ipcMain = {
     removeHandler: vi.fn(),
@@ -16,7 +16,7 @@ function handlersFor(backups: object) {
       handlers.set(channel, async (...args) => handler(...args));
     }),
   } as unknown as IpcMain;
-  registerCatalogHandlers(ipcMain, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, backups as never, { runExclusive: (fn: () => unknown) => fn() } as never);
+  registerCatalogHandlers(ipcMain, {} as never, {} as never, {} as never, reports as never, {} as never, exports as never, backups as never, operationLock as never);
   return handlers;
 }
 
@@ -50,5 +50,19 @@ describe('backup IPC restore authorization', () => {
     await expect(handlers.get('backups:restore')!(null, picked.data.token)).resolves.toMatchObject({ ok: false });
     expect(electronMock.showMessageBox).toHaveBeenCalledOnce();
     expect(backups.restoreBackup).not.toHaveBeenCalled();
+  });
+
+  it('rejects CSV export after restore without reading the stale database connection', async () => {
+    electronMock.showSaveDialog.mockResolvedValue({ canceled: true });
+    const reports = { getProfitReport: vi.fn().mockReturnValue({ date: '2026-10-07', revenueCentavos: 0, costCentavos: 0, grossProfitCentavos: 0 }) };
+    const exports = { reportToCsv: vi.fn().mockReturnValue('date,revenue\n') };
+    const operationLock = { runExclusive: vi.fn((fn: () => unknown) => fn()) };
+    const handlers = handlersFor({ isRestoreCommitted: true }, reports, exports, operationLock);
+    const result = await handlers.get('reports:export-csv')!(null, { kind: 'profit', filter: { date: '2026-10-07' } });
+    expect(result).toMatchObject({ ok: false, error: { code: 'RECOVERY_REQUIRED' } });
+    expect(operationLock.runExclusive).toHaveBeenCalledOnce();
+    expect(reports.getProfitReport).not.toHaveBeenCalled();
+    expect(exports.reportToCsv).not.toHaveBeenCalled();
+    expect(electronMock.showSaveDialog).not.toHaveBeenCalled();
   });
 });

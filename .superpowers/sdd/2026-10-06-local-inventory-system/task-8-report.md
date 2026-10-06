@@ -53,3 +53,23 @@ npx --yes --package=node@22.23.3 node "$(command -v npm)" ...
 - Operation safety backup retries in `<userData>/recovery-backups`; if both configured and fallback destinations fail, startup displays a native recovery error and does not migrate. Automatic startup backup failure is retained as a Settings warning while migration, IPC registration, and window creation continue.
 - The native picker now returns only a random one-time token and basename. Main resolves and consumes the token, then presents a native confirmation naming the backup before restore. Cancellation consumes the token without restore; invalid/reused tokens and raw paths are rejected.
 - Focused review suites: 26/26 tests passed. Final full suite: 20 files, 123 tests passed. `npm run typecheck`, `npm run lint`, and `git diff --check` passed using the Node 22.23.3 WSL runner. One lint invocation during parallel verification exited with a WSL Bus error; isolated and final sequential lint reruns passed.
+
+## Review round 2/5
+
+### RED
+
+- Added an IPC regression for `reports:export-csv` after restore is committed. Before the fix, the handler returned successful cancellation and called through to the save dialog instead of returning `RECOVERY_REQUIRED`; the test failed as expected.
+
+### GREEN
+
+- The CSV report read and CSV conversion now run inside the shared `operationLock`, with `backups.isRestoreCommitted` checked after acquiring that lock. Save-dialog interaction and file writing remain outside the lock. The regression asserts both the recovery gate and shared-lock use, and verifies neither stale report reads nor the dialog occurs.
+- Audited custom IPC handlers: the other bespoke handlers either do not read the database (file/directory pickers), already use the operation lock and post-restore gate (import commit, backup directory setting, manual backup, restore), or intentionally relaunch the app.
+- Focused IPC suite: 3/3 tests passed.
+
+### Verification
+
+- Full suite: 20 files, 124 tests passed.
+- `npm run typecheck`: passed.
+- `npm run lint`: passed.
+- `git diff --check`: passed.
+- All commands used the requested Node 22.23.3 WSL runner.
