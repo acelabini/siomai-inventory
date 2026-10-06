@@ -1,6 +1,7 @@
 import type { IpcMain } from 'electron';
-import { dialog } from 'electron';
+import { app, dialog } from 'electron';
 import { readFileSync, writeFileSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { z } from 'zod';
 import { CatalogError, type CatalogService } from '../services/catalog-service';
 import { InventoryError, type InventoryService } from '../services/inventory-service';
@@ -8,6 +9,8 @@ import { SalesError, type SalesService } from '../services/sales-service';
 import type { ReportService } from '../services/report-service';
 import type { ImportService } from '../services/import-service';
 import type { ExportService } from '../services/export-service';
+import { BackupError, type BackupService } from '../services/backup-service';
+import type { OperationLock } from '../services/operation-lock';
 import {
   completeSetupSchema,
   idSchema,
@@ -27,16 +30,19 @@ import {
   csvImportRequestSchema,
   csvImportCommitSchema,
   reportExportSchema,
+  updateSettingsSchema,
+  backupPathSchema,
 } from '../../shared/schemas';
 
 type RpcResult = { ok: true; data: unknown } | { ok: false; error: { code: string; message: string } };
 
 function errorResult(error: unknown): RpcResult {
   if (error instanceof CatalogError || error instanceof InventoryError || error instanceof SalesError) return { ok: false, error: { code: error.code, message: error.message } };
+  if (error instanceof BackupError) return { ok: false, error: { code: error.code, message: error.message } };
   return { ok: false, error: { code: 'INVALID_INPUT', message: 'The request could not be completed.' } };
 }
 
-export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogService, inventory: InventoryService, sales: SalesService, reports: ReportService, imports: ImportService, exports: ExportService): void {
+export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogService, inventory: InventoryService, sales: SalesService, reports: ReportService, imports: ImportService, exports: ExportService, backups: BackupService, operationLock: OperationLock): void {
   const register = <T>(channel: string, schema: z.ZodType<T>, action: (value: T) => unknown) => {
     ipcMain.removeHandler(channel);
     ipcMain.handle(channel, async (_event, input) => {
@@ -106,5 +112,54 @@ export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogServic
   });
 
   register('imports:preview', csvImportRequestSchema, (input) => imports.preview(input));
-  register('imports:commit', csvImportCommitSchema, (input) => imports.commit(input));
+  ipcMain.removeHandler('imports:commit');
+  ipcMain.handle('imports:commit', async (_event, input) => {
+    const parsed = csvImportCommitSchema.safeParse(input);
+    if (!parsed.success) return errorResult(new CatalogError('INVALID_INPUT', 'The import details are invalid.'));
+    try {
+      const result = await operationLock.runExclusive(async () => {
+        await backups.createOperationBackup();
+        return imports.commit(parsed.data);
+      });
+      return { ok: true, data: result } satisfies RpcResult;
+    } catch (error) { return errorResult(error); }
+  });
+
+  register('settings:get', z.undefined(), () => backups.getSettings());
+  register('settings:save', updateSettingsSchema, (input) => backups.saveSettings(input.businessName));
+  ipcMain.removeHandler('backups:choose-directory');
+  ipcMain.handle('backups:choose-directory', async () => {
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+    if (result.canceled || !result.filePaths[0]) return { ok: true, data: null } satisfies RpcResult;
+    return { ok: true, data: backups.setBackupDirectory(result.filePaths[0]) } satisfies RpcResult;
+  });
+  ipcMain.removeHandler('backups:create-manual');
+  ipcMain.handle('backups:create-manual', async () => {
+    try {
+      const backup = await backups.createManual();
+      return { ok: true, data: { fileName: backup.fileName } } satisfies RpcResult;
+    } catch (error) { return errorResult(error); }
+  });
+  ipcMain.removeHandler('backups:choose-file');
+  ipcMain.handle('backups:choose-file', async () => {
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Siomai Inventory backups', extensions: ['sqlite'] }] });
+    if (result.canceled || !result.filePaths[0]) return { ok: true, data: null } satisfies RpcResult;
+    const filePath = result.filePaths[0];
+    return { ok: true, data: { filePath, fileName: path.basename(filePath) } } satisfies RpcResult;
+  });
+  ipcMain.removeHandler('backups:restore');
+  ipcMain.handle('backups:restore', async (_event, input) => {
+    const parsed = backupPathSchema.safeParse(input);
+    if (!parsed.success) return errorResult(new CatalogError('INVALID_INPUT', 'The backup selection is invalid.'));
+    try {
+      await operationLock.runExclusive(() => backups.restoreBackup(parsed.data));
+      return { ok: true, data: undefined } satisfies RpcResult;
+    } catch (error) { return errorResult(error); }
+  });
+  ipcMain.removeHandler('app:relaunch');
+  ipcMain.handle('app:relaunch', () => {
+    app.relaunch();
+    app.exit(0);
+    return { ok: true, data: undefined } satisfies RpcResult;
+  });
 }

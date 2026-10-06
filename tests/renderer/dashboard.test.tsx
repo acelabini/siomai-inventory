@@ -20,6 +20,9 @@ function makeApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
     getValuationReport: vi.fn().mockResolvedValue({ date: '2026-10-07', totalValueCentavos: 0, items: [] }), getProfitReport: vi.fn().mockResolvedValue({ date: '2026-10-07', revenueCentavos: 0, costCentavos: 0, grossProfitCentavos: 0 }),
     getDiscrepancyReport: vi.fn().mockResolvedValue({ date: '2026-10-07', count: 0, items: [] }), getLowStockReport: vi.fn().mockResolvedValue({ date: '2026-10-07', count: 0, items: [] }),
     chooseCsvImportFile: vi.fn().mockResolvedValue(null), previewCsvImport: vi.fn(), commitCsvImport: vi.fn(), exportReportCsv: vi.fn().mockResolvedValue(false),
+    getSettings: vi.fn().mockResolvedValue({ businessName: 'Cart', backupDirectory: '/backups' }), saveSettings: vi.fn().mockResolvedValue({ businessName: 'Cart' }),
+    chooseBackupDirectory: vi.fn().mockResolvedValue(null), createManualBackup: vi.fn().mockResolvedValue({ fileName: 'manual.sqlite' }),
+    chooseBackupFile: vi.fn().mockResolvedValue(null), restoreBackup: vi.fn(), requestRelaunch: vi.fn(),
     ...overrides,
   };
 }

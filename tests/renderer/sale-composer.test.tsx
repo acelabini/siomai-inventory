@@ -21,6 +21,9 @@ function makeApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
     getMovementHistory: vi.fn(), completeSale: vi.fn().mockResolvedValue({ id: 'sale-1', locationId: 'main', businessAt: '2026-10-06 12:00:00', totalCentavos: 600, paymentCentavos: 1000, changeCentavos: 400, status: 'completed', note: null, lines: [{ productId: 'pork', productName: 'Siomai Pork', quantityPieces: 2, enteredUnit: 'piece', enteredQuantity: '2', unitSellingPriceCentavos: 300, unitCostCentavos: 1000, lineRevenueCentavos: 600, lineCostCentavos: 200, balancePieces: 23 }] }),
     listSales: vi.fn(), voidSale: vi.fn(), getDashboard: vi.fn(), getSalesReport: vi.fn(), getMovementReport: vi.fn(), getValuationReport: vi.fn(), getProfitReport: vi.fn(), getDiscrepancyReport: vi.fn(), getLowStockReport: vi.fn(),
     chooseCsvImportFile: vi.fn().mockResolvedValue(null), previewCsvImport: vi.fn(), commitCsvImport: vi.fn(), exportReportCsv: vi.fn().mockResolvedValue(false),
+    getSettings: vi.fn().mockResolvedValue({ businessName: 'Cart', backupDirectory: '/backups' }), saveSettings: vi.fn().mockResolvedValue({ businessName: 'Cart' }),
+    chooseBackupDirectory: vi.fn().mockResolvedValue(null), createManualBackup: vi.fn().mockResolvedValue({ fileName: 'manual.sqlite' }),
+    chooseBackupFile: vi.fn().mockResolvedValue(null), restoreBackup: vi.fn(), requestRelaunch: vi.fn(),
     ...overrides,
   };
 }

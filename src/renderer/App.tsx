@@ -13,6 +13,7 @@ import TransfersPage from './pages/TransfersPage';
 import SalesPage from './pages/SalesPage';
 import DashboardPage from './pages/DashboardPage';
 import ReportsPage from './pages/ReportsPage';
+import SettingsPage from './pages/SettingsPage';
 import AppShell from './components/AppShell';
 import './styles.css';
 
@@ -59,7 +60,7 @@ export default function App({ api = getInventoryApi() }: { api?: InventoryApi } 
   else if (view === 'Stock count') page = <StockCountPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} />;
   else if (view === 'Reports') page = <ReportsPage api={api} filter={{ locationId, date: businessDate, locations }} onFilterChange={(next) => { setLocationId(next.locationId); setBusinessDate(next.date); }} />;
   else if (view === 'Import') page = <ImportPage api={api} onComplete={() => setView('Settings')} onBack={() => setView('Settings')} />;
-  else if (view === 'Settings') page = <section className="catalog-page"><h1>Settings</h1><p>Local business settings will be available here.</p><button className="primary-button" type="button" onClick={() => setView('Import')}>Import CSV data</button></section>;
+  else if (view === 'Settings') page = <SettingsPage api={api} onNavigate={setView} />;
   else page = <DashboardPage api={api} onNavigate={setView} filter={{ locationId, date: businessDate, locations }} onFilterChange={(next) => { setLocationId(next.locationId); setBusinessDate(next.date); }} />;
   return <AppShell page={view} onNavigate={setView} locations={locations} locationId={locationId} date={businessDate} onLocationChange={setLocationId} onDateChange={setBusinessDate}>{page}</AppShell>;
 }

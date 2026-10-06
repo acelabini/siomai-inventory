@@ -42,6 +42,13 @@ const inventoryApi: InventoryApi = {
   previewCsvImport: (request) => call('imports:preview', request),
   commitCsvImport: (input) => call('imports:commit', input),
   exportReportCsv: (kind, filter) => call('reports:export-csv', { kind, filter }),
+  getSettings: () => call('settings:get'),
+  saveSettings: (input) => call('settings:save', input),
+  chooseBackupDirectory: () => call('backups:choose-directory'),
+  createManualBackup: () => call('backups:create-manual'),
+  chooseBackupFile: () => call('backups:choose-file'),
+  restoreBackup: (filePath) => call('backups:restore', filePath),
+  requestRelaunch: () => call('app:relaunch'),
 };
 
 contextBridge.exposeInMainWorld('inventoryApi', inventoryApi satisfies InventoryApi);

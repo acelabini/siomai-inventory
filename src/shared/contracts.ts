@@ -23,6 +23,7 @@ import type {
   ImportPreview,
   CsvImportCommitInput,
   CsvImportRequest,
+  UpdateSettingsInput,
 } from './schemas';
 
 export type DashboardProduct = { productId: string; sku: string; productName: string; piecesPerPack: number; openingPieces: number; replenishedPieces: number; soldPieces: number; remainingPieces: number; stockValueCentavos: number; lowStockThresholdPieces: number; isLowStock: boolean };
@@ -63,6 +64,13 @@ export type InventoryApi = {
   previewCsvImport(request: CsvImportRequest): Promise<ImportPreview>;
   commitCsvImport(input: CsvImportCommitInput): Promise<{ importedRows: number; aggregate: boolean }>;
   exportReportCsv(kind: 'profit' | 'sales' | 'movements' | 'valuation' | 'discrepancies' | 'low-stock', filter?: ReportFilter): Promise<boolean>;
+  getSettings(): Promise<{ businessName: string; backupDirectory: string }>;
+  saveSettings(input: UpdateSettingsInput): Promise<{ businessName: string }>;
+  chooseBackupDirectory(): Promise<string | null>;
+  createManualBackup(): Promise<{ fileName: string }>;
+  chooseBackupFile(): Promise<{ filePath: string; fileName: string } | null>;
+  restoreBackup(filePath: string): Promise<void>;
+  requestRelaunch(): Promise<void>;
 };
 
 declare global {

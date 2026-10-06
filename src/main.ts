@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import type { BrowserWindowConstructorOptions } from 'electron';
 import path from 'node:path';
+import { existsSync, statSync } from 'node:fs';
 import { openDatabase } from './main/db/database';
 import { migrateDatabase } from './main/db/migrations';
 import { registerCatalogHandlers } from './main/ipc/register-handlers';
@@ -10,6 +11,8 @@ import { SalesService } from './main/services/sales-service';
 import { ReportService } from './main/services/report-service';
 import { ImportService } from './main/services/import-service';
 import { ExportService } from './main/services/export-service';
+import { BackupService } from './main/services/backup-service';
+import { OperationLock } from './main/services/operation-lock';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 
@@ -52,13 +55,21 @@ function createWindow(): void {
 }
 
 if (process.versions.electron) {
-  void app.whenReady().then(() => {
-    const db = openDatabase(path.join(app.getPath('userData'), 'inventory.sqlite'));
-    migrateDatabase(db);
+  void app.whenReady().then(async () => {
+    const databasePath = path.join(app.getPath('userData'), 'inventory.sqlite');
+    const existingDatabase = existsSync(databasePath) && statSync(databasePath).size > 0;
+    const db = openDatabase(databasePath);
+    const operationLock = new OperationLock();
+    const backups = new BackupService(db, databasePath, path.join(app.getPath('userData'), 'backups'));
+    await operationLock.runExclusive(async () => {
+      if (existingDatabase) await backups.createOperationBackup();
+      migrateDatabase(db);
+      await backups.createAutomatic();
+    });
     const catalog = new CatalogService(db);
     const inventory = new InventoryService(db);
     const reports = new ReportService(db);
-    registerCatalogHandlers(ipcMain, catalog, inventory, new SalesService(db), reports, new ImportService(db, catalog, inventory), new ExportService());
+    registerCatalogHandlers(ipcMain, catalog, inventory, new SalesService(db), reports, new ImportService(db, catalog, inventory), new ExportService(), backups, operationLock);
     createWindow();
 
     app.on('activate', () => {

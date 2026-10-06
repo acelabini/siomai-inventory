@@ -94,6 +94,8 @@ export const csvImportPreviewSchema = z.object({
   summary: z.string(), columns: z.array(z.string()),
 });
 export const reportExportSchema = z.object({ kind: z.enum(['profit', 'sales', 'movements', 'valuation', 'discrepancies', 'low-stock']), filter: reportFilterSchema.optional() });
+export const updateSettingsSchema = z.object({ businessName: nonBlankText });
+export const backupPathSchema = z.string().trim().min(1).max(4096);
 
 export type StockQuantityInput = z.infer<typeof inventoryLineSchema>;
 export type SetOpeningStockInput = z.infer<typeof setOpeningStockSchema>;
@@ -109,6 +111,7 @@ export type ImportMapping = Record<string, string>;
 export type CsvImportRequest = z.infer<typeof csvImportRequestSchema>;
 export type CsvImportCommitInput = z.infer<typeof csvImportCommitSchema>;
 export type ImportPreview = z.infer<typeof csvImportPreviewSchema>;
+export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 export type SaleStatus = 'completed' | 'voided';
 export type InventoryBalance = { locationId: string; productId: string; quantityPieces: number; };
 export type StockMovement = {
