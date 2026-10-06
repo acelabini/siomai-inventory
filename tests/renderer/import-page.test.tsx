@@ -10,7 +10,7 @@ afterEach(cleanup);
 function api(overrides: Partial<InventoryApi> = {}): InventoryApi {
   return {
     chooseCsvImportFile: vi.fn().mockResolvedValue({ fileName: 'products.csv', csv: 'Product,Code\nPork,SKU-1' }),
-    previewCsvImport: vi.fn().mockResolvedValue({ token: 'preview-1', contentHash: 'a'.repeat(64), kind: 'products', validRows: 1, invalidRows: 0, errors: [], summary: '1 valid row ready to import.', columns: ['Product', 'Code'] }),
+    previewCsvImport: vi.fn().mockResolvedValue({ token: 'preview-1', contentHash: 'a'.repeat(64), kind: 'products', validRows: 1, invalidRows: 0, fileErrors: 0, errors: [], summary: '1 valid row ready to import.', columns: ['Product', 'Code'] }),
     commitCsvImport: vi.fn().mockResolvedValue({ importedRows: 1, aggregate: false }),
     listLocations: vi.fn().mockResolvedValue([{ id: 'loc-1', name: 'Main Cart', isActive: true }]),
     ...overrides,
@@ -26,7 +26,7 @@ describe('ImportPage', () => {
   });
 
   it('lets the operator choose a location for opening packs in a products file', async () => {
-    const previewCsvImport = vi.fn().mockResolvedValue({ token: 'preview-1', contentHash: 'a'.repeat(64), kind: 'products', validRows: 1, invalidRows: 0, errors: [], summary: '1 valid row ready to import.', columns: ['SKU', 'Name', 'Pieces per pack', 'Purchase cost (PHP)', 'Piece price (PHP)', 'Pack price (PHP)', 'Opening packs'] });
+    const previewCsvImport = vi.fn().mockResolvedValue({ token: 'preview-1', contentHash: 'a'.repeat(64), kind: 'products', validRows: 1, invalidRows: 0, fileErrors: 0, errors: [], summary: '1 valid row ready to import.', columns: ['SKU', 'Name', 'Pieces per pack', 'Purchase cost (PHP)', 'Piece price (PHP)', 'Pack price (PHP)', 'Opening packs'] });
     const services = api({
       chooseCsvImportFile: vi.fn().mockResolvedValue({ fileName: 'products.csv', csv: 'SKU,Name,Pieces per pack,Purchase cost (PHP),Piece price (PHP),Pack price (PHP),Opening packs\nA,Product,10,10,1,9,2' }),
       previewCsvImport,
@@ -40,7 +40,7 @@ describe('ImportPage', () => {
   });
 
   it('maps columns, previews row errors, and disables commit while errors remain', async () => {
-    const previewCsvImport = vi.fn().mockResolvedValue({ token: 'preview-1', contentHash: 'a'.repeat(64), kind: 'opening-stock', validRows: 1, invalidRows: 1, errors: [{ row: 3, message: 'Product was not found.' }], summary: '1 valid row ready to import.', columns: ['Product', 'Qty', 'Measure'] });
+    const previewCsvImport = vi.fn().mockResolvedValue({ token: 'preview-1', contentHash: 'a'.repeat(64), kind: 'opening-stock', validRows: 1, invalidRows: 1, fileErrors: 0, errors: [{ row: 3, message: 'Product was not found.' }], summary: '1 valid row ready to import.', columns: ['Product', 'Qty', 'Measure'] });
     const services = api({
       chooseCsvImportFile: vi.fn().mockResolvedValue({ fileName: 'opening.csv', csv: 'Product,Qty,Measure\nPork,2,pack' }),
       previewCsvImport,
@@ -58,12 +58,45 @@ describe('ImportPage', () => {
     expect(screen.getByRole('button', { name: /commit import/i })).toBeDisabled();
   });
 
+  it('allows SKU-only opening-stock mapping and labels both product selectors optional', async () => {
+    const previewCsvImport = vi.fn().mockResolvedValue({ token: 'preview-sku', contentHash: 'c'.repeat(64), kind: 'opening-stock', validRows: 1, invalidRows: 0, fileErrors: 0, errors: [], summary: '1 valid row ready to import.', columns: ['SKU', 'Qty', 'Unit'] });
+    const services = api({
+      chooseCsvImportFile: vi.fn().mockResolvedValue({ fileName: 'opening.csv', csv: 'SKU,Qty,Unit\nPORK,2,pack' }),
+      previewCsvImport,
+    });
+    render(<ImportPage api={services} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /choose csv file/i }));
+    await screen.findByRole('heading', { name: /map columns/i });
+    fireEvent.change(screen.getByLabelText(/import type/i), { target: { value: 'opening-stock' } });
+    expect(screen.getByLabelText('SKU').parentElement).toHaveTextContent(/optional/i);
+    expect(screen.getByLabelText('Product name').parentElement).toHaveTextContent(/optional/i);
+    expect(screen.getByText(/map at least one: SKU or product name/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('SKU'), { target: { value: 'SKU' } });
+    fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: 'Qty' } });
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: 'Unit' } });
+    fireEvent.click(screen.getByRole('button', { name: /preview and validate/i }));
+    await waitFor(() => expect(previewCsvImport).toHaveBeenCalledWith(expect.objectContaining({ mapping: { sku: 'SKU', quantity: 'Qty', unit: 'Unit' } })));
+  });
+
+  it('shows file-level parser/header problems in a separate file issues count', async () => {
+    const services = api({
+      previewCsvImport: vi.fn().mockResolvedValue({ token: 'preview-file-error', contentHash: 'd'.repeat(64), kind: 'products', validRows: 1, invalidRows: 0, fileErrors: 1, errors: [{ row: 1, message: 'Duplicate column "SKU".' }], summary: '1 valid row ready to import.', columns: ['SKU', 'SKU'] }),
+    });
+    render(<ImportPage api={services} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /choose csv file/i }));
+    await screen.findByRole('heading', { name: /map columns/i });
+    fireEvent.click(screen.getByRole('button', { name: /preview and validate/i }));
+    expect(await screen.findByRole('heading', { name: 'File issues' })).toBeInTheDocument();
+    expect(screen.getByText('Duplicate column "SKU".')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /commit import/i })).toBeDisabled();
+  });
+
   it('commits an aggregate file and reports the imported rows without claiming sales were created', async () => {
     const commitCsvImport = vi.fn().mockResolvedValue({ importedRows: 1, aggregate: true });
     const onComplete = vi.fn();
     const services = api({
       chooseCsvImportFile: vi.fn().mockResolvedValue({ fileName: 'daily.csv', csv: 'Product name,Pieces per pack,Pack quantity,Replenishment quantity,Pieces,Total cost\nSiomai Pork,10,2,1,3,30.00' }),
-      previewCsvImport: vi.fn().mockResolvedValue({ token: 'preview-aggregate', contentHash: 'b'.repeat(64), kind: 'spreadsheet-aggregate', validRows: 1, invalidRows: 0, errors: [], summary: 'Imported aggregate stock data. No transaction sales will be created.', columns: ['Product name', 'Pieces per pack', 'Pack quantity', 'Replenishment quantity', 'Pieces', 'Total cost'] }),
+      previewCsvImport: vi.fn().mockResolvedValue({ token: 'preview-aggregate', contentHash: 'b'.repeat(64), kind: 'spreadsheet-aggregate', validRows: 1, invalidRows: 0, fileErrors: 0, errors: [], summary: 'Imported aggregate stock data. No transaction sales will be created.', columns: ['Product name', 'Pieces per pack', 'Pack quantity', 'Replenishment quantity', 'Pieces', 'Total cost'] }),
       commitCsvImport,
     });
     render(<ImportPage api={services} onComplete={onComplete} />);

@@ -89,7 +89,7 @@ export const csvImportRequestSchema = z.object({ csv: z.string().max(5_000_000),
 export const csvImportCommitSchema = csvImportRequestSchema.extend({ token: idSchema, contentHash: z.string().regex(/^[a-f0-9]{64}$/) });
 export const csvImportPreviewSchema = z.object({
   token: idSchema, contentHash: z.string().regex(/^[a-f0-9]{64}$/), kind: importKindSchema,
-  validRows: z.number().int().min(0), invalidRows: z.number().int().min(0),
+  validRows: z.number().int().min(0), invalidRows: z.number().int().min(0), fileErrors: z.number().int().min(0),
   errors: z.array(z.object({ row: z.number().int().positive(), message: z.string() })),
   summary: z.string(), columns: z.array(z.string()),
 });

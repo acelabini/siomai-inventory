@@ -76,6 +76,56 @@ describe('ImportService', () => {
     } finally { cleanup(); }
   });
 
+  it('reports repeated opening-stock rows for the same resolved product during preview', () => {
+    const { catalog, service, cleanup } = makeService();
+    try {
+      catalog.saveProduct({ sku: 'PORK', name: 'Siomai Pork', piecesPerPack: 10, purchaseCostPerPackCentavos: 1000, sellingPricePerPieceCentavos: 100, sellingPricePerPackCentavos: 900, lowStockThresholdPieces: 0 });
+      const csv = 'SKU,Quantity,Unit\nPORK,2,pack\nPORK,1,piece';
+      const preview = service.preview({ csv, kind: 'opening-stock', locationId: catalog.listLocations()[0]!.id });
+      expect(preview.errors).toEqual(expect.arrayContaining([
+        expect.objectContaining({ row: 2, message: expect.stringMatching(/more than once/i) }),
+        expect.objectContaining({ row: 3, message: expect.stringMatching(/more than once/i) }),
+      ]));
+    } finally { cleanup(); }
+  });
+
+  it('reports repeated aggregate rows for the same resolved product during preview', () => {
+    const { catalog, service, cleanup } = makeService();
+    try {
+      catalog.saveProduct({ sku: 'PORK', name: 'Siomai Pork', piecesPerPack: 10, purchaseCostPerPackCentavos: 1000, sellingPricePerPieceCentavos: 100, sellingPricePerPackCentavos: 900, lowStockThresholdPieces: 0 });
+      const csv = 'Product name,Pieces per pack,Pack quantity,Replenishment quantity,Pieces,Total cost\nSiomai Pork,10,2,1,3,30.00\nSiomai Pork,10,1,0,0,30.00';
+      const preview = service.preview({ csv, kind: 'spreadsheet-aggregate', locationId: catalog.listLocations()[0]!.id });
+      expect(preview.errors).toEqual(expect.arrayContaining([
+        expect.objectContaining({ row: 2, message: expect.stringMatching(/more than once/i) }),
+        expect.objectContaining({ row: 3, message: expect.stringMatching(/more than once/i) }),
+      ]));
+    } finally { cleanup(); }
+  });
+
+  it('allows opening stock to be mapped by SKU without a name column', () => {
+    const { catalog, service, cleanup } = makeService();
+    try {
+      const product = catalog.saveProduct({ sku: 'PORK', name: 'Siomai Pork', piecesPerPack: 10, purchaseCostPerPackCentavos: 1000, sellingPricePerPieceCentavos: 100, sellingPricePerPackCentavos: 900, lowStockThresholdPieces: 0 });
+      const csv = 'SKU,Quantity,Unit\nPORK,2,pack';
+      const preview = service.preview({ csv, kind: 'opening-stock', locationId: catalog.listLocations()[0]!.id });
+      expect(preview.errors).toEqual([]);
+      const result = service.commit({ csv, kind: 'opening-stock', locationId: catalog.listLocations()[0]!.id, token: preview.token, contentHash: preview.contentHash });
+      expect(result.importedRows).toBe(1);
+      expect(result.aggregate).toBe(false);
+      expect(catalog.listProducts()).toEqual([expect.objectContaining({ id: product.id })]);
+    } finally { cleanup(); }
+  });
+
+  it('reports parser and header failures in the file issues count', () => {
+    const { service, cleanup } = makeService();
+    try {
+      const preview = service.preview({ csv: 'SKU,SKU\nA,A', kind: 'products' });
+      expect(preview.fileErrors).toBeGreaterThan(0);
+      expect(preview.invalidRows).toBeGreaterThan(0);
+      expect(preview.validRows).toBe(0);
+    } finally { cleanup(); }
+  });
+
   it('labels spreadsheet imports as aggregates and never creates sales', () => {
     const { db, catalog, service, cleanup } = makeService();
     try {

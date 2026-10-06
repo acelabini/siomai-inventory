@@ -100,7 +100,7 @@ export class ImportService {
     const validRows = validation.rows.filter((entry) => entry.errors.length === 0).length;
     return {
       token, contentHash, kind: request.kind, validRows, invalidRows: validation.rows.length - validRows,
-      errors, columns: validation.headers,
+      fileErrors: validation.fileErrors, errors, columns: validation.headers,
       summary: request.kind === 'spreadsheet-aggregate'
         ? 'Imported aggregate stock data. No transaction sales will be created.'
         : `${validRows} valid row${validRows === 1 ? '' : 's'} ready to import.`,
@@ -124,9 +124,14 @@ export class ImportService {
     return this.db.transaction(write).immediate();
   }
 
-  private validate(request: ImportRequest): { headers: string[]; rows: ParsedRow[]; errors: ImportRowError[] } {
+  private validate(request: ImportRequest): { headers: string[]; rows: ParsedRow[]; errors: ImportRowError[]; fileErrors: number } {
     const parsed = parseCsv(request.csv);
     const errors = [...parsed.errors];
+    let fileErrors = parsed.errors.length;
+    const addFileError = (message: string) => {
+      errors.push({ row: 1, message });
+      fileErrors += 1;
+    };
     const getColumn = (key: string) => {
       const explicit = request.mapping?.[key];
       if (explicit && parsed.headers.includes(explicit)) return explicit;
@@ -135,15 +140,18 @@ export class ImportService {
     };
     const required = request.kind === 'products'
       ? ['sku', 'name', 'piecesPerPack', 'purchaseCostPerPack', 'sellingPricePerPiece', 'sellingPricePerPack']
-      : request.kind === 'opening-stock' ? ['name', 'quantity', 'unit']
+      : request.kind === 'opening-stock' ? ['quantity', 'unit']
         : ['name', 'piecesPerPack', 'packQuantity', 'replenishmentQuantity', 'pieces', 'totalCost'];
-    for (const key of required) if (!getColumn(key)) errors.push({ row: 1, message: `Required column is missing: ${key}.` });
+    for (const key of required) if (!getColumn(key)) addFileError(`Required column is missing: ${key}.`);
+    if (request.kind === 'opening-stock' && !getColumn('sku') && !getColumn('name')) {
+      addFileError('Map at least one product identifier: SKU or product name.');
+    }
     const openingPacksColumn = getColumn('openingPacks');
     const includesOpeningPacks = request.kind === 'products' && !!openingPacksColumn
       && parsed.rows.some(({ values }) => !!values[openingPacksColumn]?.trim());
     if ((request.kind !== 'products' || includesOpeningPacks)
       && (!request.locationId || !this.catalog.listLocations().some((location) => location.id === request.locationId))) {
-      errors.push({ row: 1, message: 'Choose an active location for this import.' });
+      addFileError('Choose an active location for this import.');
     }
     const products = this.catalog.listProducts();
     const allProducts = this.catalog.listProducts({ includeArchived: true });
@@ -209,13 +217,27 @@ export class ImportService {
       if (result.errors.length) errors.push(...result.errors.map((message) => ({ row, message })));
       return result;
     });
+    if (request.kind !== 'products') {
+      const byProduct = new Map<string, ParsedRow[]>();
+      for (const entry of rows) {
+        const key = entry.productId ? `id:${entry.productId}` : entry.product ? `sku:${entry.product.sku.toLowerCase()}` : undefined;
+        if (key) byProduct.set(key, [...(byProduct.get(key) ?? []), entry]);
+      }
+      for (const entries of byProduct.values()) if (entries.length > 1) {
+        for (const entry of entries) {
+          const message = 'This product appears more than once in the file. Combine its quantities into one row.';
+          entry.errors.push(message);
+          errors.push({ row: entry.row, message });
+        }
+      }
+    }
     const seenSkus = new Set<string>();
     for (const entry of rows) if (entry.product && request.kind === 'products') {
       const sku = entry.product.sku.toLowerCase();
       if (seenSkus.has(sku)) errors.push({ row: entry.row, message: `Duplicate SKU "${entry.product.sku}" in this file.` });
       seenSkus.add(sku);
     }
-    return { headers: parsed.headers, rows, errors };
+    return { headers: parsed.headers, rows, errors, fileErrors };
   }
 
   private applyValidatedRows(request: ImportRequest, rows: ParsedRow[]): number {
