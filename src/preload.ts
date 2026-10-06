@@ -31,6 +31,13 @@ const inventoryApi: InventoryApi = {
   completeSale: (input) => call('sales:complete', input),
   listSales: (query) => call('sales:list', query),
   voidSale: (saleId, reason) => call('sales:void', { saleId, reason }),
+  getDashboard: (filter) => call('reports:dashboard', filter),
+  getSalesReport: (filter) => call('reports:sales', filter),
+  getMovementReport: (filter) => call('reports:movements', filter),
+  getValuationReport: (filter) => call('reports:valuation', filter),
+  getProfitReport: (filter) => call('reports:profit', filter),
+  getDiscrepancyReport: (filter) => call('reports:discrepancies', filter),
+  getLowStockReport: (filter) => call('reports:low-stock', filter),
 };
 
 contextBridge.exposeInMainWorld('inventoryApi', inventoryApi satisfies InventoryApi);

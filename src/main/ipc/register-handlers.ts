@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { CatalogError, type CatalogService } from '../services/catalog-service';
 import { InventoryError, type InventoryService } from '../services/inventory-service';
 import { SalesError, type SalesService } from '../services/sales-service';
+import type { ReportService } from '../services/report-service';
 import {
   completeSetupSchema,
   idSchema,
@@ -18,6 +19,7 @@ import {
   completeSaleSchema,
   salesListQuerySchema,
   voidSaleSchema,
+  reportFilterSchema,
 } from '../../shared/schemas';
 
 type RpcResult = { ok: true; data: unknown } | { ok: false; error: { code: string; message: string } };
@@ -27,7 +29,7 @@ function errorResult(error: unknown): RpcResult {
   return { ok: false, error: { code: 'INVALID_INPUT', message: 'The request could not be completed.' } };
 }
 
-export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogService, inventory: InventoryService, sales: SalesService): void {
+export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogService, inventory: InventoryService, sales: SalesService, reports: ReportService): void {
   const register = <T>(channel: string, schema: z.ZodType<T>, action: (value: T) => unknown) => {
     ipcMain.removeHandler(channel);
     ipcMain.handle(channel, async (_event, input) => {
@@ -58,4 +60,11 @@ export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogServic
   register('sales:complete', completeSaleSchema, (input) => sales.completeSale(input));
   register('sales:list', salesListQuerySchema, (query) => sales.listSales(query ?? {}));
   register('sales:void', voidSaleSchema, ({ saleId, reason }) => sales.voidSale(saleId, reason));
+  register('reports:dashboard', reportFilterSchema.optional(), (filter) => reports.getDashboard(filter));
+  register('reports:sales', reportFilterSchema.optional(), (filter) => reports.getSalesReport(filter));
+  register('reports:movements', reportFilterSchema.optional(), (filter) => reports.getMovementReport(filter));
+  register('reports:valuation', reportFilterSchema.optional(), (filter) => reports.getValuationReport(filter));
+  register('reports:profit', reportFilterSchema.optional(), (filter) => reports.getProfitReport(filter));
+  register('reports:discrepancies', reportFilterSchema.optional(), (filter) => reports.getDiscrepancyReport(filter));
+  register('reports:low-stock', reportFilterSchema.optional(), (filter) => reports.getLowStockReport(filter));
 }

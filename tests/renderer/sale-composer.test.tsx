@@ -19,7 +19,7 @@ function makeApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
     listLocations: vi.fn().mockResolvedValue([main]), saveLocation: vi.fn(), archiveLocation: vi.fn(), setOpeningStock: vi.fn(), recordReplenishment: vi.fn(),
     transferStock: vi.fn(), submitStockCount: vi.fn(), getBalances: vi.fn().mockResolvedValue([{ locationId: 'main', productId: 'pork', quantityPieces: 25 }, { locationId: 'main', productId: 'beef', quantityPieces: 6 }]),
     getMovementHistory: vi.fn(), completeSale: vi.fn().mockResolvedValue({ id: 'sale-1', locationId: 'main', businessAt: '2026-10-06 12:00:00', totalCentavos: 600, paymentCentavos: 1000, changeCentavos: 400, status: 'completed', note: null, lines: [{ productId: 'pork', productName: 'Siomai Pork', quantityPieces: 2, enteredUnit: 'piece', enteredQuantity: '2', unitSellingPriceCentavos: 300, unitCostCentavos: 1000, lineRevenueCentavos: 600, lineCostCentavos: 200, balancePieces: 23 }] }),
-    listSales: vi.fn(), voidSale: vi.fn(), ...overrides,
+    listSales: vi.fn(), voidSale: vi.fn(), getDashboard: vi.fn(), getSalesReport: vi.fn(), getMovementReport: vi.fn(), getValuationReport: vi.fn(), getProfitReport: vi.fn(), getDiscrepancyReport: vi.fn(), getLowStockReport: vi.fn(), ...overrides,
   };
 }
 

@@ -78,6 +78,11 @@ export const completeSaleSchema = z.object({
 });
 export const salesListQuerySchema = z.object({ locationId: idSchema.optional(), status: z.enum(['completed', 'voided']).optional(), limit: z.number().int().positive().max(500).optional() }).optional();
 export const voidSaleSchema = z.object({ saleId: idSchema, reason: z.string().trim().min(1).max(500) });
+const businessDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((date) => {
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  return Number.isFinite(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === date;
+}, 'Enter a valid business date');
+export const reportFilterSchema = z.object({ locationId: idSchema.optional(), date: businessDateSchema.optional() });
 
 export type StockQuantityInput = z.infer<typeof inventoryLineSchema>;
 export type SetOpeningStockInput = z.infer<typeof setOpeningStockSchema>;
@@ -87,6 +92,7 @@ export type StockCountInput = z.infer<typeof stockCountSchema>;
 export type MovementHistoryQuery = z.infer<typeof movementHistoryQuerySchema>;
 export type CompleteSaleInput = z.infer<typeof completeSaleSchema>;
 export type SalesListQuery = z.infer<typeof salesListQuerySchema>;
+export type ReportFilter = z.infer<typeof reportFilterSchema>;
 export type SaleStatus = 'completed' | 'voided';
 export type InventoryBalance = { locationId: string; productId: string; quantityPieces: number; };
 export type StockMovement = {
