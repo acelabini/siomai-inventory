@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { InventoryApi } from '../../shared/contracts';
 import { getInventoryApi } from '../api';
 
-type SelectedBackup = { filePath: string; fileName: string };
+type SelectedBackup = { token: string; fileName: string };
 
 export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { api?: InventoryApi; onNavigate: (page: string) => void }) {
   const [businessName, setBusinessName] = useState('');
@@ -11,6 +11,7 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [startupWarning, setStartupWarning] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -18,6 +19,7 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
       if (!active) return;
       setBusinessName(settings.businessName);
       setBackupDirectory(settings.backupDirectory);
+      setStartupWarning(settings.startupWarning ?? '');
     }).catch(() => { if (active) setError('Settings could not be loaded.'); });
     return () => { active = false; };
   }, [api]);
@@ -61,8 +63,9 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
     if (!selectedBackup) return;
     setBusy(true); setError('');
     try {
-      await api.restoreBackup(selectedBackup.filePath);
-      await api.requestRelaunch();
+      const restored = await api.restoreBackup(selectedBackup.token);
+      if (restored) await api.requestRelaunch();
+      else { setSelectedBackup(null); setMessage('Restore canceled.'); }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The backup could not be restored.'); }
     finally { setBusy(false); }
   }
@@ -70,6 +73,7 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
   return <section className="catalog-page settings-page" aria-labelledby="settings-title">
     <div className="page-heading"><div><p className="eyebrow">Business setup</p><h1 id="settings-title">Settings</h1></div></div>
     {error && <p role="alert" className="field-error">{error}</p>}
+    {startupWarning && <p role="alert" className="field-error">{startupWarning}</p>}
     {message && <p role="status" className="report-note">{message}</p>}
     <section aria-labelledby="business-settings-title">
       <h2 id="business-settings-title">Business</h2>

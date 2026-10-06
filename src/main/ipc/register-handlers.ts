@@ -1,7 +1,6 @@
 import type { IpcMain } from 'electron';
 import { app, dialog } from 'electron';
 import { readFileSync, writeFileSync, statSync } from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
 import { CatalogError, type CatalogService } from '../services/catalog-service';
 import { InventoryError, type InventoryService } from '../services/inventory-service';
@@ -10,6 +9,7 @@ import type { ReportService } from '../services/report-service';
 import type { ImportService } from '../services/import-service';
 import type { ExportService } from '../services/export-service';
 import { BackupError, type BackupService } from '../services/backup-service';
+import { BackupSelectionStore, restoreSelectedBackup } from '../services/backup-authorization';
 import type { OperationLock } from '../services/operation-lock';
 import {
   completeSetupSchema,
@@ -31,7 +31,7 @@ import {
   csvImportCommitSchema,
   reportExportSchema,
   updateSettingsSchema,
-  backupPathSchema,
+  backupSelectionTokenSchema,
 } from '../../shared/schemas';
 
 type RpcResult = { ok: true; data: unknown } | { ok: false; error: { code: string; message: string } };
@@ -43,13 +43,18 @@ function errorResult(error: unknown): RpcResult {
 }
 
 export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogService, inventory: InventoryService, sales: SalesService, reports: ReportService, imports: ImportService, exports: ExportService, backups: BackupService, operationLock: OperationLock): void {
+  const backupSelections = new BackupSelectionStore();
   const register = <T>(channel: string, schema: z.ZodType<T>, action: (value: T) => unknown) => {
     ipcMain.removeHandler(channel);
     ipcMain.handle(channel, async (_event, input) => {
       const parsed = schema.safeParse(input);
       if (!parsed.success) return errorResult(new CatalogError('INVALID_INPUT', 'The request details are invalid.'));
       try {
-        return { ok: true, data: action(parsed.data) } satisfies RpcResult;
+        const data = await operationLock.runExclusive(() => {
+          if (backups.isRestoreCommitted) throw new BackupError('RECOVERY_REQUIRED', 'The restored database is ready. Relaunch the application to continue.');
+          return action(parsed.data);
+        });
+        return { ok: true, data } satisfies RpcResult;
       } catch (error) {
         return errorResult(error);
       }
@@ -118,6 +123,7 @@ export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogServic
     if (!parsed.success) return errorResult(new CatalogError('INVALID_INPUT', 'The import details are invalid.'));
     try {
       const result = await operationLock.runExclusive(async () => {
+        if (backups.isRestoreCommitted) throw new BackupError('RECOVERY_REQUIRED', 'The restored database is ready. Relaunch the application to continue.');
         await backups.createOperationBackup();
         return imports.commit(parsed.data);
       });
@@ -131,12 +137,21 @@ export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogServic
   ipcMain.handle('backups:choose-directory', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
     if (result.canceled || !result.filePaths[0]) return { ok: true, data: null } satisfies RpcResult;
-    return { ok: true, data: backups.setBackupDirectory(result.filePaths[0]) } satisfies RpcResult;
+    try {
+      const directory = await operationLock.runExclusive(() => {
+        if (backups.isRestoreCommitted) throw new BackupError('RECOVERY_REQUIRED', 'The restored database is ready. Relaunch the application to continue.');
+        return backups.setBackupDirectory(result.filePaths[0]!);
+      });
+      return { ok: true, data: directory } satisfies RpcResult;
+    } catch (error) { return errorResult(error); }
   });
   ipcMain.removeHandler('backups:create-manual');
   ipcMain.handle('backups:create-manual', async () => {
     try {
-      const backup = await backups.createManual();
+      const backup = await operationLock.runExclusive(async () => {
+        if (backups.isRestoreCommitted) throw new BackupError('RECOVERY_REQUIRED', 'The restored database is ready. Relaunch the application to continue.');
+        return backups.createManual();
+      });
       return { ok: true, data: { fileName: backup.fileName } } satisfies RpcResult;
     } catch (error) { return errorResult(error); }
   });
@@ -145,15 +160,27 @@ export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogServic
     const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Siomai Inventory backups', extensions: ['sqlite'] }] });
     if (result.canceled || !result.filePaths[0]) return { ok: true, data: null } satisfies RpcResult;
     const filePath = result.filePaths[0];
-    return { ok: true, data: { filePath, fileName: path.basename(filePath) } } satisfies RpcResult;
+    return { ok: true, data: backupSelections.add(filePath) } satisfies RpcResult;
   });
   ipcMain.removeHandler('backups:restore');
   ipcMain.handle('backups:restore', async (_event, input) => {
-    const parsed = backupPathSchema.safeParse(input);
+    const parsed = backupSelectionTokenSchema.safeParse(input);
     if (!parsed.success) return errorResult(new CatalogError('INVALID_INPUT', 'The backup selection is invalid.'));
     try {
-      await operationLock.runExclusive(() => backups.restoreBackup(parsed.data));
-      return { ok: true, data: undefined } satisfies RpcResult;
+      const result = await restoreSelectedBackup(
+        parsed.data,
+        backupSelections,
+        async (fileName) => {
+          const confirmation = await dialog.showMessageBox({
+            type: 'warning', title: 'Confirm database restore', buttons: ['Cancel', 'Restore backup'],
+            defaultId: 0, cancelId: 0, message: `Restore ${fileName}?`,
+            detail: 'The current database will be protected with a safety backup before replacement.',
+          });
+          return confirmation.response === 1;
+        },
+        (filePath) => operationLock.runExclusive(() => backups.restoreBackup(filePath)),
+      );
+      return { ok: true, data: result.restored } satisfies RpcResult;
     } catch (error) { return errorResult(error); }
   });
   ipcMain.removeHandler('app:relaunch');

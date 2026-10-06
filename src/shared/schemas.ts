@@ -95,7 +95,7 @@ export const csvImportPreviewSchema = z.object({
 });
 export const reportExportSchema = z.object({ kind: z.enum(['profit', 'sales', 'movements', 'valuation', 'discrepancies', 'low-stock']), filter: reportFilterSchema.optional() });
 export const updateSettingsSchema = z.object({ businessName: nonBlankText });
-export const backupPathSchema = z.string().trim().min(1).max(4096);
+export const backupSelectionTokenSchema = z.string().uuid();
 
 export type StockQuantityInput = z.infer<typeof inventoryLineSchema>;
 export type SetOpeningStockInput = z.infer<typeof setOpeningStockSchema>;

@@ -97,6 +97,23 @@ describe('BackupService', () => {
     } finally { db.close(); }
   });
 
+  it('rejects a plausible version-3 database with a missing settings primary key before touching live data', async () => {
+    const { service, db, dbPath, root } = fixture();
+    const incompletePath = path.join(root, 'incomplete.sqlite');
+    const incomplete = openDatabase(incompletePath);
+    migrateDatabase(incomplete);
+    incomplete.pragma('foreign_keys = OFF');
+    incomplete.exec('DROP TABLE settings; CREATE TABLE settings (key TEXT, value TEXT);');
+    incomplete.prepare('INSERT INTO settings VALUES (?, ?)').run('business_name', 'Fake');
+    incomplete.close();
+    try {
+      await expect(service.restoreBackup(incompletePath)).rejects.toThrow(/valid, compatible/i);
+      expect(db.open).toBe(true);
+      expect(db.prepare("SELECT value FROM settings WHERE key = 'business_name'").pluck().get()).toBe('Cart ni Ate');
+      expect(readFileSync(dbPath).byteLength).toBeGreaterThan(0);
+    } finally { db.close(); }
+  });
+
   it('takes a pre-restore safety backup and restores the selected backup atomically', async () => {
     const { service, db, backupDir } = fixture();
     try {
@@ -105,7 +122,7 @@ describe('BackupService', () => {
       db.prepare("UPDATE settings SET value = 'Changed' WHERE key = 'business_name'").run();
       await service.restoreBackup(saved.path);
       expect(readdirSync(backupDir).some((name) => name.startsWith('safety-'))).toBe(true);
-      expect(db.open).toBe(false);
+      expect(db.open).toBe(true);
       const restored = openDatabase(path.join(path.dirname(backupDir), 'inventory.sqlite'));
       try { expect(restored.prepare("SELECT value FROM settings WHERE key = 'business_name'").pluck().get()).toBe('Cart ni Ate'); }
       finally { restored.close(); }
@@ -127,6 +144,40 @@ describe('BackupService', () => {
       walDb.close();
       if (db.open) db.close();
     }
+  });
+
+  it('keeps the live database open and usable when atomic replacement fails', async () => {
+    const { db, dbPath, backupDir, root } = fixture();
+    const service = new BackupService(db, dbPath, backupDir, () => new Date('2026-10-07T16:30:00.000Z'), {
+      replaceDatabase: () => {
+        expect(db.pragma('journal_mode', { simple: true })).toBe('delete');
+        throw new Error('injected rename failure');
+      },
+    });
+    try {
+      const source = await service.createManual(path.join(root, 'restore'));
+      db.prepare("UPDATE settings SET value = 'Live remains' WHERE key = 'business_name'").run();
+      await expect(service.restoreBackup(source.path)).rejects.toThrow(/could not be restored/i);
+      expect(db.open).toBe(true);
+      expect(db.prepare("SELECT value FROM settings WHERE key = 'business_name'").pluck().get()).toBe('Live remains');
+      db.prepare("UPDATE settings SET value = 'Still writable' WHERE key = 'business_name'").run();
+      expect(db.prepare("SELECT value FROM settings WHERE key = 'business_name'").pluck().get()).toBe('Still writable');
+      expect(readFileSync(dbPath).byteLength).toBeGreaterThan(0);
+    } finally { if (db.open) db.close(); }
+  });
+
+  it('falls back under user data for an operation backup if the configured directory is unavailable', async () => {
+    const { db, dbPath, root } = fixture();
+    const blocked = path.join(root, 'not-a-directory');
+    writeFileSync(blocked, 'file blocks directory creation');
+    const service = new BackupService(db, dbPath, blocked);
+    try {
+      const safety = await service.createOperationBackup();
+      expect(safety.path).toContain(path.join(root, 'recovery-backups'));
+      const snapshot = openDatabase(safety.path);
+      try { expect(snapshot.pragma('integrity_check', { simple: true })).toBe('ok'); }
+      finally { snapshot.close(); }
+    } finally { db.close(); }
   });
 });
 

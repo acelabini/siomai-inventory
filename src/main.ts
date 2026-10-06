@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import type { BrowserWindowConstructorOptions } from 'electron';
 import path from 'node:path';
 import { existsSync, statSync } from 'node:fs';
@@ -13,6 +13,7 @@ import { ImportService } from './main/services/import-service';
 import { ExportService } from './main/services/export-service';
 import { BackupService } from './main/services/backup-service';
 import { OperationLock } from './main/services/operation-lock';
+import { initializeAppDatabase } from './main/services/startup-recovery';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 
@@ -61,16 +62,25 @@ if (process.versions.electron) {
     const db = openDatabase(databasePath);
     const operationLock = new OperationLock();
     const backups = new BackupService(db, databasePath, path.join(app.getPath('userData'), 'backups'));
-    await operationLock.runExclusive(async () => {
-      if (existingDatabase) await backups.createOperationBackup();
-      migrateDatabase(db);
-      await backups.createAutomatic();
-    });
-    const catalog = new CatalogService(db);
-    const inventory = new InventoryService(db);
-    const reports = new ReportService(db);
-    registerCatalogHandlers(ipcMain, catalog, inventory, new SalesService(db), reports, new ImportService(db, catalog, inventory), new ExportService(), backups, operationLock);
-    createWindow();
+    try {
+      await initializeAppDatabase({
+        existingDatabase,
+        backups,
+        operationLock,
+        migrate: () => migrateDatabase(db),
+        onReady: () => {
+          const catalog = new CatalogService(db);
+          const inventory = new InventoryService(db);
+          const reports = new ReportService(db);
+          registerCatalogHandlers(ipcMain, catalog, inventory, new SalesService(db), reports, new ImportService(db, catalog, inventory), new ExportService(), backups, operationLock);
+          createWindow();
+        },
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'The safety backup could not be created.';
+      dialog.showErrorBox('Database safety backup required', `${detail}\n\nNo database migration was started. Check storage permissions and available disk space, then relaunch Siomai Inventory.`);
+      return;
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {

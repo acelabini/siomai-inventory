@@ -13,8 +13,8 @@ function settingsApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
     saveSettings: vi.fn().mockResolvedValue({ businessName: 'Cart ni Ate' }),
     chooseBackupDirectory: vi.fn().mockResolvedValue('/new-backups'),
     createManualBackup: vi.fn().mockResolvedValue({ fileName: 'manual-2026-10-08.sqlite' }),
-    chooseBackupFile: vi.fn().mockResolvedValue({ filePath: '/backups/cart.sqlite', fileName: 'cart.sqlite' }),
-    restoreBackup: vi.fn().mockResolvedValue(undefined),
+    chooseBackupFile: vi.fn().mockResolvedValue({ token: 'restore-token-1', fileName: 'cart.sqlite' }),
+    restoreBackup: vi.fn().mockResolvedValue(true),
     requestRelaunch: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   } as unknown as InventoryApi;
@@ -30,6 +30,12 @@ describe('SettingsPage', () => {
     fireEvent.change(businessName, { target: { value: '  Cart ni Bunso  ' } });
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
     await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ businessName: 'Cart ni Bunso' }));
+  });
+
+  it('surfaces a startup backup failure with a manual recovery action', async () => {
+    render(<SettingsPage api={settingsApi({ getSettings: vi.fn().mockResolvedValue({ businessName: 'Cart', backupDirectory: '/backups', startupWarning: 'Automatic startup backup failed.' }) })} onNavigate={vi.fn()} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/automatic startup backup failed/i);
+    expect(screen.getByRole('button', { name: /create backup now/i })).toBeEnabled();
   });
 
   it('lets the operator choose a backup directory and create a manual backup', async () => {
@@ -50,7 +56,7 @@ describe('SettingsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /restore from backup/i }));
     expect(await screen.findByRole('dialog', { name: /restore cart\.sqlite/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^restore backup$/i }));
-    await waitFor(() => expect(services.restoreBackup).toHaveBeenCalledWith('/backups/cart.sqlite'));
+    await waitFor(() => expect(services.restoreBackup).toHaveBeenCalledWith('restore-token-1'));
     expect(services.requestRelaunch).toHaveBeenCalledOnce();
   });
 
@@ -69,6 +75,15 @@ describe('SettingsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /cancel/i }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(services.restoreBackup).not.toHaveBeenCalled();
+    expect(services.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it('does not request relaunch when the main-process confirmation is denied', async () => {
+    const services = settingsApi({ restoreBackup: vi.fn().mockResolvedValue(false) });
+    render(<SettingsPage api={services} onNavigate={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /restore from backup/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^restore backup$/i }));
+    await waitFor(() => expect(services.restoreBackup).toHaveBeenCalledWith('restore-token-1'));
     expect(services.requestRelaunch).not.toHaveBeenCalled();
   });
 

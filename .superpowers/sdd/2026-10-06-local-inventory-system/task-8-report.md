@@ -31,6 +31,25 @@ npx --yes --package=node@22.23.3 node "$(command -v npm)" ...
 ## Self-review
 
 - Confirmed backup snapshots are created with `better-sqlite3`'s SQLite backup API and use a temporary file plus rename for publication.
-- Confirmed restore validation precedes safety backup, live connection closure, and file replacement; invalid backups leave the live connection and data available.
+- Confirmed restore validation precedes the safety backup and atomic file replacement; invalid backups leave the live connection and data available.
 - Confirmed restore snapshots its source through SQLite's backup API so data committed to a source WAL is included in the replacement.
 - Existing unrelated edits to `.gitignore` and the shared plan/spec were left untouched.
+
+## Review round 1/5
+
+### RED
+
+- Complete-schema adversarial test: a version-3 database with every expected table and the expected settings column names, but without the settings primary key, was accepted and replaced live data. The new test failed because restore resolved instead of rejecting.
+- Atomic replacement failure-injection test: the injected replacement error was ignored by the implementation; restore resolved and closed the live connection. The test failed because restore did not reject while leaving the original connection usable.
+- Startup recovery test: the test first failed because the startup recovery module was absent. Its contract requires automatic-backup failure to continue through migration and app readiness with a warning, while failed safety backup must stop before migration and readiness.
+- Authorization tests: the test first failed because the authorization module was absent. The IPC test then demonstrated the picker returned the raw path and accepted a renderer path as restore input.
+- Settings warning test: the startup backup warning was not rendered; the test failed to find a recoverable alert.
+- Fallback test: the configured backup location failure surfaced `ENOTDIR` rather than creating the safety copy under user data.
+
+### GREEN
+
+- Restore validation now compares every persisted SQLite schema object (tables, indexes, triggers, full table DDL and constraints) against a fresh schema produced by all current migrations, after integrity and foreign-key checks. The incomplete-but-plausible fixture is rejected without closing or changing live data.
+- Restore stages and validates the replacement in the database directory, checkpoints WAL, switches the open live connection to DELETE journaling, and performs one POSIX atomic rename over the live path. Injected replacement failure leaves the original file and open connection readable and writable. Successful replacement keeps the old connection from serving further IPC until the renderer requests relaunch.
+- Operation safety backup retries in `<userData>/recovery-backups`; if both configured and fallback destinations fail, startup displays a native recovery error and does not migrate. Automatic startup backup failure is retained as a Settings warning while migration, IPC registration, and window creation continue.
+- The native picker now returns only a random one-time token and basename. Main resolves and consumes the token, then presents a native confirmation naming the backup before restore. Cancellation consumes the token without restore; invalid/reused tokens and raw paths are rejected.
+- Focused review suites: 26/26 tests passed. Final full suite: 20 files, 123 tests passed. `npm run typecheck`, `npm run lint`, and `git diff --check` passed using the Node 22.23.3 WSL runner. One lint invocation during parallel verification exited with a WSL Bus error; isolated and final sequential lint reruns passed.
