@@ -2,6 +2,7 @@ import type { IpcMain } from 'electron';
 import { z } from 'zod';
 import { CatalogError, type CatalogService } from '../services/catalog-service';
 import { InventoryError, type InventoryService } from '../services/inventory-service';
+import { SalesError, type SalesService } from '../services/sales-service';
 import {
   completeSetupSchema,
   idSchema,
@@ -14,16 +15,19 @@ import {
   setOpeningStockSchema,
   stockCountSchema,
   transferSchema,
+  completeSaleSchema,
+  salesListQuerySchema,
+  voidSaleSchema,
 } from '../../shared/schemas';
 
 type RpcResult = { ok: true; data: unknown } | { ok: false; error: { code: string; message: string } };
 
 function errorResult(error: unknown): RpcResult {
-  if (error instanceof CatalogError || error instanceof InventoryError) return { ok: false, error: { code: error.code, message: error.message } };
+  if (error instanceof CatalogError || error instanceof InventoryError || error instanceof SalesError) return { ok: false, error: { code: error.code, message: error.message } };
   return { ok: false, error: { code: 'INVALID_INPUT', message: 'The request could not be completed.' } };
 }
 
-export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogService, inventory: InventoryService): void {
+export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogService, inventory: InventoryService, sales: SalesService): void {
   const register = <T>(channel: string, schema: z.ZodType<T>, action: (value: T) => unknown) => {
     ipcMain.removeHandler(channel);
     ipcMain.handle(channel, async (_event, input) => {
@@ -51,4 +55,7 @@ export function registerCatalogHandlers(ipcMain: IpcMain, catalog: CatalogServic
   register('inventory:submit-stock-count', stockCountSchema, (input) => inventory.submitStockCount(input));
   register('inventory:get-balances', balancesQuerySchema, ({ locationId }) => inventory.getBalances(locationId));
   register('inventory:get-movement-history', movementHistoryQuerySchema, (query) => inventory.getMovementHistory(query));
+  register('sales:complete', completeSaleSchema, (input) => sales.completeSale(input));
+  register('sales:list', salesListQuerySchema, (query) => sales.listSales(query ?? {}));
+  register('sales:void', voidSaleSchema, ({ saleId, reason }) => sales.voidSale(saleId, reason));
 }

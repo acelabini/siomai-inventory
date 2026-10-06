@@ -8,6 +8,7 @@ import ReplenishPage from './pages/ReplenishPage';
 import StockCountPage from './pages/StockCountPage';
 import SetupPage from './pages/SetupPage';
 import TransfersPage from './pages/TransfersPage';
+import SalesPage from './pages/SalesPage';
 import './styles.css';
 
 const navigation = [
@@ -64,12 +65,12 @@ export default function App({ api = getInventoryApi() }: { api?: InventoryApi } 
             <span><span className="context-label">Cart:</span> Main Cart</span>
             <span><span className="context-label">Date:</span> Today</span>
           </div>
-          <button className="primary-button" type="button" disabled>
+          <button className="primary-button" type="button" onClick={() => setView('Sales')}>
             + New sale
           </button>
         </header>
 
-        {view === 'Products' ? <ProductsPage api={api} /> : view === 'Locations' ? <LocationsPage api={api} /> : view === 'Inventory' ? <InventoryPage api={api} /> : view === 'Replenish' ? <ReplenishPage api={api} /> : view === 'Transfers' ? <TransfersPage api={api} /> : view === 'Stock count' ? <StockCountPage api={api} /> : <section className="ledger-page" aria-labelledby="page-title">
+        {view === 'Sales' ? <SalesPage api={api} /> : view === 'Products' ? <ProductsPage api={api} /> : view === 'Locations' ? <LocationsPage api={api} /> : view === 'Inventory' ? <InventoryPage api={api} /> : view === 'Replenish' ? <ReplenishPage api={api} /> : view === 'Transfers' ? <TransfersPage api={api} /> : view === 'Stock count' ? <StockCountPage api={api} /> : <section className="ledger-page" aria-labelledby="page-title">
           <div className="page-heading">
             <div>
               <p className="eyebrow">Tuesday · Main Cart</p>

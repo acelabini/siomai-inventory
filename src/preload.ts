@@ -28,6 +28,9 @@ const inventoryApi: InventoryApi = {
   submitStockCount: (input) => call('inventory:submit-stock-count', input),
   getBalances: (locationId) => call('inventory:get-balances', { locationId }),
   getMovementHistory: (query) => call('inventory:get-movement-history', query),
+  completeSale: (input) => call('sales:complete', input),
+  listSales: (query) => call('sales:list', query),
+  voidSale: (saleId, reason) => call('sales:void', { saleId, reason }),
 };
 
 contextBridge.exposeInMainWorld('inventoryApi', inventoryApi satisfies InventoryApi);

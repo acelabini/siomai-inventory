@@ -26,6 +26,7 @@ function makeApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
     recordReplenishment: vi.fn().mockResolvedValue({ id: 'receipt-1', lines: [] }),
     transferStock: vi.fn().mockResolvedValue({ id: 'transfer-1', lines: [] }),
     submitStockCount: vi.fn().mockResolvedValue({ id: 'count-1', lines: [] }),
+    completeSale: vi.fn(), listSales: vi.fn().mockResolvedValue([]), voidSale: vi.fn(),
     ...overrides,
   };
 }

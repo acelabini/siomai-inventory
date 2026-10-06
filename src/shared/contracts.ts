@@ -15,6 +15,10 @@ import type {
   StockMovement,
   TransferInput,
   TransferReceipt,
+  CompleteSaleInput,
+  SalesListQuery,
+  SaleReceipt,
+  SaleSummary,
 } from './schemas';
 
 export type InventoryApi = {
@@ -32,6 +36,9 @@ export type InventoryApi = {
   submitStockCount(input: StockCountInput): Promise<StockCountReceipt>;
   getBalances(locationId: string): Promise<InventoryBalance[]>;
   getMovementHistory(query?: MovementHistoryQuery): Promise<StockMovement[]>;
+  completeSale(input: CompleteSaleInput): Promise<SaleReceipt>;
+  listSales(query?: SalesListQuery): Promise<SaleSummary[]>;
+  voidSale(saleId: string, reason: string): Promise<SaleReceipt>;
 };
 
 declare global {

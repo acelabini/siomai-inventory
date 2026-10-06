@@ -68,6 +68,16 @@ export const stockCountSchema = z.object({
 });
 export const balancesQuerySchema = z.object({ locationId: idSchema });
 export const movementHistoryQuerySchema = z.object({ locationId: idSchema.optional(), productId: idSchema.optional(), movementType: z.string().min(1).optional(), limit: z.number().int().positive().max(500).optional() });
+const centavosAmount = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+export const saleLineSchema = z.object({ productId: idSchema, quantity: positiveQuantity, unit: quantityUnitSchema });
+export const completeSaleSchema = z.object({
+  locationId: idSchema,
+  paymentCentavos: centavosAmount,
+  note: z.string().trim().max(500).optional(),
+  lines: z.array(saleLineSchema).min(1).max(100),
+});
+export const salesListQuerySchema = z.object({ locationId: idSchema.optional(), status: z.enum(['completed', 'voided']).optional(), limit: z.number().int().positive().max(500).optional() }).optional();
+export const voidSaleSchema = z.object({ saleId: idSchema, reason: z.string().trim().min(1).max(500) });
 
 export type StockQuantityInput = z.infer<typeof inventoryLineSchema>;
 export type SetOpeningStockInput = z.infer<typeof setOpeningStockSchema>;
@@ -75,10 +85,13 @@ export type ReplenishmentInput = z.infer<typeof replenishmentSchema>;
 export type TransferInput = z.infer<typeof transferSchema>;
 export type StockCountInput = z.infer<typeof stockCountSchema>;
 export type MovementHistoryQuery = z.infer<typeof movementHistoryQuerySchema>;
+export type CompleteSaleInput = z.infer<typeof completeSaleSchema>;
+export type SalesListQuery = z.infer<typeof salesListQuerySchema>;
+export type SaleStatus = 'completed' | 'voided';
 export type InventoryBalance = { locationId: string; productId: string; quantityPieces: number; };
 export type StockMovement = {
   id: string; locationId: string; productId: string; productName: string; quantityPieces: number;
-  movementType: 'opening_balance' | 'replenishment' | 'transfer_in' | 'transfer_out' | 'count_adjustment' | 'sale';
+  movementType: 'opening_balance' | 'replenishment' | 'transfer_in' | 'transfer_out' | 'count_adjustment' | 'sale' | 'sale_void';
   occurredAt: string; relatedEntityType: string | null; relatedEntityId: string | null; note: string | null;
   unitCostCentavos: number | null; lineCostCentavos: number | null;
 };
@@ -86,6 +99,9 @@ export type InventoryReceiptLine = { productId: string; quantityPieces: number; 
 export type InventoryReceipt = { id: string; lines: InventoryReceiptLine[] };
 export type TransferReceipt = { id: string; lines: Array<{ productId: string; quantityPieces: number; fromBalancePieces: number; toBalancePieces: number; }> };
 export type StockCountReceipt = { id: string; lines: Array<{ productId: string; expectedPieces: number; countedPieces: number; differencePieces: number; balancePieces: number; }> };
+export type SaleLineReceipt = { productId: string; productName: string; quantityPieces: number; enteredUnit: 'piece' | 'pack'; enteredQuantity: string; unitSellingPriceCentavos: number; unitCostCentavos: number; lineRevenueCentavos: number; lineCostCentavos: number; balancePieces: number; };
+export type SaleReceipt = { id: string; locationId: string; businessAt: string; totalCentavos: number; paymentCentavos: number; changeCentavos: number; status: SaleStatus; note: string | null; lines: SaleLineReceipt[]; };
+export type SaleSummary = Omit<SaleReceipt, 'lines'> & { lines: Array<Omit<SaleLineReceipt, 'balancePieces'>> };
 
 export type CatalogProduct = z.infer<typeof catalogProductSchema>;
 export type SaveProductInput = z.infer<typeof saveProductSchema>;
