@@ -110,6 +110,8 @@ export default function ImportPage({ api = getInventoryApi(), onComplete, onBack
 
   const currentColumns = columns[kind];
   const needsLocation = kind !== 'products' || !!mapping.openingPacks;
+  const fileIssueCount = preview?.errors.filter((item) => item.row === 1).length ?? 0;
+  const invalidRowCount = new Set(preview?.errors.filter((item) => item.row > 1).map((item) => item.row) ?? []).size;
   return <section className="catalog-page import-page" aria-labelledby="page-title">
     <div className="page-heading"><div><p className="eyebrow">Settings · CSV import</p><h1 id="page-title">Import data</h1></div>{onBack && <button className="secondary-button" type="button" onClick={onBack}>Back to Settings</button>}</div>
     <ol className="import-stages" aria-label="Import stages"><li aria-current={stage === 1 ? 'step' : undefined}>1 Choose file</li><li aria-current={stage === 2 ? 'step' : undefined}>2 Map columns</li><li aria-current={stage === 3 ? 'step' : undefined}>3 Preview and validate</li><li aria-current={stage === 4 ? 'step' : undefined}>4 Commit</li></ol>
@@ -123,9 +125,9 @@ export default function ImportPage({ api = getInventoryApi(), onComplete, onBack
       {kind === 'spreadsheet-aggregate' && <p className="report-note" role="note">Aggregate stock values are recorded as opening and replenishment movements. Transaction sales will not be created.</p>}
       <div className="form-actions"><button className="primary-button" type="button" disabled={busy || (needsLocation && !locationId)} onClick={() => void previewFile()}>{busy ? 'Checking…' : 'Preview and validate'}</button></div>
     </section>}
-    {stage === 3 && preview && <section aria-labelledby="preview-title"><h2 id="preview-title">Preview and validate</h2>{preview.kind !== 'spreadsheet-aggregate' && <p>{preview.summary}</p>}<dl className="import-preview-counts"><div><dt>Valid rows</dt><dd>{preview.validRows}</dd></div><div><dt>Invalid rows</dt><dd>{preview.invalidRows}</dd></div><div><dt>File issues</dt><dd>{preview.fileErrors}</dd></div></dl>
+    {stage === 3 && preview && <section aria-labelledby="preview-title"><h2 id="preview-title">Preview and validate</h2>{preview.kind !== 'spreadsheet-aggregate' && <p>{preview.summary}</p>}<dl className="import-preview-counts"><div><dt>Valid rows</dt><dd>{preview.validRows}</dd></div><div><dt>Invalid rows</dt><dd>{invalidRowCount}</dd></div><div><dt>File issues</dt><dd>{fileIssueCount}</dd></div></dl>
       {preview.kind === 'spreadsheet-aggregate' && <p className="report-note" role="note">Imported aggregate stock data. No transaction sales will be created.</p>}
-      {preview.fileErrors > 0 && <section aria-label="File issues"><h3>File issues</h3><ul className="import-errors">{preview.errors.filter((item) => item.row === 1).map((item, index) => <li key={`file-${index}`}>{item.message}</li>)}</ul></section>}
+      {fileIssueCount > 0 && <section aria-label="File issues"><h3>File issues</h3><ul className="import-errors">{preview.errors.filter((item) => item.row === 1).map((item, index) => <li key={`file-${index}`}>{item.message}</li>)}</ul></section>}
       {preview.errors.some((item) => item.row > 1) && <section aria-label="Import errors"><h3>Rows to correct</h3><ul className="import-errors">{preview.errors.filter((item) => item.row > 1).map((item, index) => <li key={`${item.row}-${index}`}><strong>Row {item.row}</strong> {item.message}</li>)}</ul></section>}
       <div className="form-actions"><button className="secondary-button" type="button" onClick={() => setStage(2)}>Back to mapping</button><button className="primary-button" type="button" disabled={preview.errors.length > 0 || preview.validRows === 0 || busy} onClick={() => void commitImport()}>{busy ? 'Importing…' : 'Commit import'}</button></div>
     </section>}

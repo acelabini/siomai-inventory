@@ -8,7 +8,7 @@ export type ImportRequest = CsvImportRequest;
 export type ImportCommitInput = CsvImportCommitInput;
 export type ImportRowError = { row: number; message: string };
 type Row = { row: number; values: Record<string, string> };
-type ParsedRow = { row: number; product?: CatalogProduct; productId?: string; openingPieces?: number; replenishmentPacks?: number; errors: string[] };
+type ParsedRow = { row: number; sku?: string; product?: CatalogProduct; productId?: string; openingPieces?: number; replenishmentPacks?: number; errors: string[] };
 type TokenEntry = { hash: string; request: ImportRequest };
 
 const aliases: Record<ImportKind, Record<string, string[]>> = {
@@ -97,9 +97,11 @@ export class ImportService {
     const contentHash = hashRequest(request);
     this.tokens.set(token, { hash: contentHash, request });
     const errors = validation.errors;
-    const validRows = validation.rows.filter((entry) => entry.errors.length === 0).length;
+    const invalidRowNumbers = new Set(validation.errors.filter((error) => error.row > 1).map((error) => error.row));
+    for (const entry of validation.rows) if (entry.errors.length) invalidRowNumbers.add(entry.row);
+    const validRows = validation.rows.filter((entry) => entry.errors.length === 0 && !invalidRowNumbers.has(entry.row)).length;
     return {
-      token, contentHash, kind: request.kind, validRows, invalidRows: validation.rows.length - validRows,
+      token, contentHash, kind: request.kind, validRows, invalidRows: invalidRowNumbers.size,
       fileErrors: validation.fileErrors, errors, columns: validation.headers,
       summary: request.kind === 'spreadsheet-aggregate'
         ? 'Imported aggregate stock data. No transaction sales will be created.'
@@ -127,7 +129,7 @@ export class ImportService {
   private validate(request: ImportRequest): { headers: string[]; rows: ParsedRow[]; errors: ImportRowError[]; fileErrors: number } {
     const parsed = parseCsv(request.csv);
     const errors = [...parsed.errors];
-    let fileErrors = parsed.errors.length;
+    let fileErrors = parsed.errors.filter((error) => error.row === 1).length;
     const addFileError = (message: string) => {
       errors.push({ row: 1, message });
       fileErrors += 1;
@@ -160,6 +162,7 @@ export class ImportService {
       const result: ParsedRow = { row, errors: [] };
       if (request.kind === 'products') {
         const sku = raw('sku'), name = raw('name'), piecesPerPack = numeric(raw('piecesPerPack'));
+        result.sku = sku;
         const purchaseCost = phpCentavos(raw('purchaseCostPerPack'));
         const sellingPiece = phpCentavos(raw('sellingPricePerPiece'));
         const sellingPack = phpCentavos(raw('sellingPricePerPack'));
@@ -231,11 +234,19 @@ export class ImportService {
         }
       }
     }
-    const seenSkus = new Set<string>();
-    for (const entry of rows) if (entry.product && request.kind === 'products') {
-      const sku = entry.product.sku.toLowerCase();
-      if (seenSkus.has(sku)) errors.push({ row: entry.row, message: `Duplicate SKU "${entry.product.sku}" in this file.` });
-      seenSkus.add(sku);
+    if (request.kind === 'products') {
+      const rowsBySku = new Map<string, ParsedRow[]>();
+      for (const entry of rows) if (entry.sku) {
+        const sku = entry.sku.toLowerCase();
+        rowsBySku.set(sku, [...(rowsBySku.get(sku) ?? []), entry]);
+      }
+      for (const entries of rowsBySku.values()) if (entries.length > 1) {
+        for (const entry of entries) {
+          const message = `Duplicate SKU "${entry.sku}" in this file.`;
+          entry.errors.push(message);
+          errors.push({ row: entry.row, message });
+        }
+      }
     }
     return { headers: parsed.headers, rows, errors, fileErrors };
   }

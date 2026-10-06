@@ -91,6 +91,22 @@ describe('ImportPage', () => {
     expect(screen.getByRole('button', { name: /commit import/i })).toBeDisabled();
   });
 
+  it('shows a data-row parser error exactly once and counts it as an invalid row', async () => {
+    const message = 'Unexpected text after a quoted field.';
+    const services = api({
+      previewCsvImport: vi.fn().mockResolvedValue({ token: 'preview-malformed-row', contentHash: 'e'.repeat(64), kind: 'products', validRows: 0, invalidRows: 0, fileErrors: 1, errors: [{ row: 2, message }], summary: '0 valid rows ready to import.', columns: ['SKU', 'Name'] }),
+    });
+    render(<ImportPage api={services} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /choose csv file/i }));
+    await screen.findByRole('heading', { name: /map columns/i });
+    fireEvent.click(screen.getByRole('button', { name: /preview and validate/i }));
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getAllByText(message)).toHaveLength(1);
+    expect(screen.getByText('Invalid rows').nextElementSibling).toHaveTextContent('1');
+    expect(screen.getByText('File issues').nextElementSibling).toHaveTextContent('0');
+    expect(screen.getByRole('button', { name: /commit import/i })).toBeDisabled();
+  });
+
   it('commits an aggregate file and reports the imported rows without claiming sales were created', async () => {
     const commitCsvImport = vi.fn().mockResolvedValue({ importedRows: 1, aggregate: true });
     const onComplete = vi.fn();

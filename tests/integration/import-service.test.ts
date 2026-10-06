@@ -47,8 +47,25 @@ describe('ImportService', () => {
       const missingColumns = service.preview({ csv: 'SKU,Name\nDUP,One', kind: 'products' });
       const duplicates = service.preview({ csv: 'SKU,Name,Pieces per pack,Purchase cost (PHP),Piece price (PHP),Pack price (PHP)\nDUP,One,10,10,1,9\nDUP,Two,10,10,1,9', kind: 'products' });
       expect(missingColumns.errors).toEqual(expect.arrayContaining([expect.objectContaining({ row: 1, message: expect.stringMatching(/required column/i) })]));
-      expect(duplicates.errors).toEqual(expect.arrayContaining([expect.objectContaining({ row: 3, message: expect.stringMatching(/duplicate SKU/i) })]));
+      expect(duplicates.errors).toEqual(expect.arrayContaining([
+        expect.objectContaining({ row: 2, message: expect.stringMatching(/duplicate SKU/i) }),
+        expect.objectContaining({ row: 3, message: expect.stringMatching(/duplicate SKU/i) }),
+      ]));
+      expect(duplicates.invalidRows).toBe(2);
+      expect(duplicates.validRows).toBe(0);
       expect(catalog.listProducts()).toHaveLength(0);
+    } finally { cleanup(); }
+  });
+
+  it('counts malformed CSV data rows as invalid row issues, not file issues', () => {
+    const { service, cleanup } = makeService();
+    try {
+      const csv = 'SKU,Name,Pieces per pack,Purchase cost (PHP),Piece price (PHP),Pack price (PHP)\nA,"Product"oops,10,10,1,9';
+      const preview = service.preview({ csv, kind: 'products' });
+      expect(preview.errors).toContainEqual({ row: 2, message: 'Unexpected text after a quoted field.' });
+      expect(preview.fileErrors).toBe(0);
+      expect(preview.invalidRows).toBe(1);
+      expect(preview.validRows).toBe(0);
     } finally { cleanup(); }
   });
 
