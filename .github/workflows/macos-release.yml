@@ -69,7 +69,7 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security default-keychain -s "$KEYCHAIN_PATH"
-          printf '%s' "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          printf '%s' "$APPLE_CERTIFICATE_P12_BASE64" | base64 -D > "$CERTIFICATE_PATH"
           security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
@@ -83,7 +83,7 @@ jobs:
       - name: Run Electron end-to-end smoke test
         run: npm run test:e2e
 
-      - name: Build the universal app and DMG
+      - name: Build and inspect the universal app
         shell: bash
         run: |
           rm -rf out/make
@@ -103,29 +103,48 @@ jobs:
             exit 1
           fi
           node scripts/check-package.mjs "$APP_PATH"
-          DMG_COUNT=0
-          DMG_PATH=''
-          while IFS= read -r candidate; do
-            DMG_COUNT=$((DMG_COUNT + 1))
-            DMG_PATH="$candidate"
-          done < <(find out/make -type f -name '*.dmg' -print)
-          if [[ "$DMG_COUNT" -ne 1 ]]; then
-            printf '::error::Expected exactly one release DMG, found %s.\n' "$DMG_COUNT"
-            exit 1
-          fi
           echo "RELEASE_APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
-          echo "RELEASE_DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
 
-      - name: Notarize and staple app and disk image
+      - name: Notarize and staple app, then build final DMG
         shell: bash
         run: |
           APP_PATH="$RELEASE_APP_PATH"
-          DMG_PATH="$RELEASE_DMG_PATH"
+          APP_NOTARY_ZIP="$RUNNER_TEMP/Siomai-Inventory-${GITHUB_REF_NAME}.zip"
+          DMG_STAGING_DIR="$RUNNER_TEMP/siomai-release-dmg"
+          echo "APP_NOTARY_ZIP=$APP_NOTARY_ZIP" >> "$GITHUB_ENV"
+          echo "DMG_STAGING_DIR=$DMG_STAGING_DIR" >> "$GITHUB_ENV"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$APP_NOTARY_ZIP"
+          APP_SUBMISSION="$(xcrun notarytool submit "$APP_NOTARY_ZIP" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json)"
+          APP_STATUS="$(printf '%s' "$APP_SUBMISSION" | node -e 'let input="";process.stdin.on("data", chunk => input += chunk).on("end", () => { try { process.stdout.write(JSON.parse(input).status ?? ""); } catch { process.exit(2); } });')"
+          if [[ "$APP_STATUS" != 'Accepted' ]]; then
+            printf '::error::App notarization was not accepted (status: %s).\n' "$APP_STATUS"
+            exit 1
+          fi
           xcrun stapler staple "$APP_PATH"
-          xcrun notarytool submit "$DMG_PATH" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
-          xcrun stapler staple "$DMG_PATH"
           xcrun stapler validate "$APP_PATH"
-          xcrun stapler validate "$DMG_PATH"
+
+          rm -rf "$DMG_STAGING_DIR"
+          mkdir -p "$DMG_STAGING_DIR" out/release
+          ditto "$APP_PATH" "$DMG_STAGING_DIR/Siomai Inventory.app"
+          ln -s /Applications "$DMG_STAGING_DIR/Applications"
+          FINAL_DMG="$GITHUB_WORKSPACE/out/release/Siomai-Inventory-${GITHUB_REF_NAME}-universal.dmg"
+          rm -f "$FINAL_DMG"
+          hdiutil create -volname 'Siomai Inventory' -srcfolder "$DMG_STAGING_DIR" -ov -format UDZO "$FINAL_DMG"
+          echo "RELEASE_DMG_PATH=$FINAL_DMG" >> "$GITHUB_ENV"
+
+      - name: Notarize and verify the final DMG and app
+        shell: bash
+        run: |
+          APP_PATH="$RELEASE_APP_PATH"
+          FINAL_DMG="$RELEASE_DMG_PATH"
+          DMG_SUBMISSION="$(xcrun notarytool submit "$FINAL_DMG" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json)"
+          DMG_STATUS="$(printf '%s' "$DMG_SUBMISSION" | node -e 'let input="";process.stdin.on("data", chunk => input += chunk).on("end", () => { try { process.stdout.write(JSON.parse(input).status ?? ""); } catch { process.exit(2); } });')"
+          if [[ "$DMG_STATUS" != 'Accepted' ]]; then
+            printf '::error::Final DMG notarization was not accepted (status: %s).\n' "$DMG_STATUS"
+            exit 1
+          fi
+          xcrun stapler staple "$FINAL_DMG"
+          xcrun stapler validate "$FINAL_DMG"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           spctl --assess --type execute --verbose=4 "$APP_PATH"
           EXECUTABLE="$APP_PATH/Contents/MacOS/Siomai Inventory"
@@ -134,10 +153,10 @@ jobs:
             echo "::error::Universal app is missing an architecture: $ARCHS"
             exit 1
           }
-          DMG_DIR="$(dirname "$DMG_PATH")"
-          DMG_NAME="$(basename "$DMG_PATH")"
+          DMG_DIR="$(dirname "$FINAL_DMG")"
+          DMG_NAME="$(basename "$FINAL_DMG")"
           (cd "$DMG_DIR" && shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256")
-          echo "dmg_path=$DMG_PATH" >> "$GITHUB_OUTPUT"
+          echo "dmg_path=$FINAL_DMG" >> "$GITHUB_OUTPUT"
           echo "checksum_path=$DMG_DIR/$DMG_NAME.sha256" >> "$GITHUB_OUTPUT"
         id: signed_release
 
@@ -156,4 +175,6 @@ jobs:
         shell: bash
         run: |
           [[ -z "${CERTIFICATE_PATH:-}" ]] || rm -f "$CERTIFICATE_PATH"
+          [[ -z "${APP_NOTARY_ZIP:-}" ]] || rm -f "$APP_NOTARY_ZIP"
+          [[ -z "${DMG_STAGING_DIR:-}" ]] || rm -rf "$DMG_STAGING_DIR"
           [[ -z "${KEYCHAIN_PATH:-}" ]] || security delete-keychain "$KEYCHAIN_PATH" || true

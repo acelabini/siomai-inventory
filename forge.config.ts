@@ -21,13 +21,6 @@ const config: ForgeConfig = {
           }),
         }
       : undefined,
-    osxNotarize: process.env.APPLE_ID && process.env.APPLE_APP_SPECIFIC_PASSWORD && process.env.APPLE_TEAM_ID
-      ? {
-          appleId: process.env.APPLE_ID,
-          appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
-          teamId: process.env.APPLE_TEAM_ID,
-        }
-      : undefined,
   },
   rebuildConfig: {},
   makers: [

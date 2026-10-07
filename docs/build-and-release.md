@@ -23,11 +23,11 @@ The business owner supplies and controls the Apple Developer identity. Add these
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for `notarytool` |
 | `APPLE_TEAM_ID` | 10-character Apple Developer Team ID |
 
-The workflow stops with a missing-secret error before packaging if any value is absent. The certificate is imported into an ephemeral runner keychain. Secrets are passed to Forge through the process environment; they are not stored in source, the app bundle, the DMG, or the release artifact. Do not enable shell tracing around credential setup.
+The workflow stops with a missing-secret error before packaging if any value is absent. The certificate is imported into an ephemeral runner keychain. Signing and notarization credentials are exposed only through the process environment to the Forge signing or release notarization steps; they are not stored in source, the app bundle, the DMG, or the release artifact. Do not enable shell tracing around credential setup.
 
-Push a tag such as `v1.0.0` to run `.github/workflows/macos-release.yml`. It installs locked dependencies, runs tests, typecheck, lint, E2E, and the package checker, builds a universal DMG, signs with hardened runtime and the app entitlements, submits the app and disk image for notarization, staples and verifies the ticket, checks the app signature/Gatekeeper assessment and both executable architectures, generates a SHA-256 file, and uploads the DMG and checksum as a workflow artifact.
+Push a tag such as `v1.0.0` to run `.github/workflows/macos-release.yml`. It installs locked dependencies, runs tests, typecheck, lint, and E2E, builds and checks the universal app, signs with hardened runtime and the app entitlements, submits a ZIP of the app and waits for an `Accepted` notarization result, then staples and validates the app. It recreates the final DMG from that stapled app, submits the exact final DMG and waits for acceptance, staples and validates it, checks the app signature/Gatekeeper assessment and both executable architectures, generates a SHA-256 file, and uploads the final DMG and checksum as a workflow artifact.
 
-Forge's configuration accepts `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` from the environment. Local unsigned packages are suitable for development only. Never commit a certificate, private key, app-specific password, or local keychain export.
+Forge's configuration accepts `APPLE_SIGNING_IDENTITY` from the environment for code signing. The release workflow uses `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` directly with `notarytool`; notarization is intentionally sequenced outside Forge so the final DMG is built from the already-stapled app. Local unsigned packages are suitable for development only. Never commit a certificate, private key, app-specific password, or local keychain export.
 
 ## Release recovery
 
