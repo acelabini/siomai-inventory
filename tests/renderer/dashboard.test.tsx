@@ -86,7 +86,7 @@ describe('dashboard and reports', () => {
     expect(screen.getByRole('complementary', { name: /main navigation/i })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
     expect(screen.getByRole('main')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' }));
     await waitFor(() => expect(api.getDashboard).toHaveBeenLastCalledWith({ locationId: 'main', date: '2026-10-06' }));
   });
 
@@ -134,7 +134,7 @@ describe('dashboard and reports', () => {
 
     for (const workflow of ['Sales', 'Inventory', 'Replenish', 'Transfers', 'Stock count']) {
       const callCount = (api.getBalances as ReturnType<typeof vi.fn>).mock.calls.length;
-      fireEvent.click(screen.getByRole('button', { name: workflow }));
+      fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: workflow === 'Sales' ? 'New sale' : workflow }));
       await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(callCount + 1));
       expect(api.getBalances).toHaveBeenLastCalledWith('branch');
     }
