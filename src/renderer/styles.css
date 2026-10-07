@@ -343,7 +343,7 @@ h1 { margin-bottom: 0; font-family: var(--font-display); font-size: 34px; font-w
 .inventory-table-wrap { margin-top: 20px; }
 .movement-panel { margin-top: 24px; }
 .ledger-page > .page-heading .form-field { min-width: 210px; }
-.nav-link:focus-visible, button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .data-table-scroll:focus-visible, .confirm-dialog:focus-visible { outline: var(--focus-outline); outline-offset: 3px; }
+.nav-link:focus-visible, button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .data-table-scroll:focus-visible, .confirm-dialog:focus-visible, .sale-receipt:focus-visible { outline: var(--focus-outline); outline-offset: 3px; }
 .sidebar :focus-visible { outline-color: var(--turmeric); }
 .dashboard-heading { align-items: end; gap: 18px; }
 .filter-row { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }

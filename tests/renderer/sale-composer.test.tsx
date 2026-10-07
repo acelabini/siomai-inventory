@@ -222,6 +222,42 @@ describe('sale composer', () => {
     expect(screen.getByRole('button', { name: 'Complete sale' })).toBeEnabled();
   });
 
+  it.each(['resolves', 'rejects'] as const)('discards a delayed old-location sale refresh when it %s after the current stock loads', async (outcome) => {
+    let resolveOld!: (balances: InventoryBalance[]) => void;
+    let rejectOld!: (reason: Error) => void;
+    let resolveCurrent!: (balances: InventoryBalance[]) => void;
+    const oldRefresh = new Promise<InventoryBalance[]>((resolve, reject) => { resolveOld = resolve; rejectOld = reject; });
+    const currentStock = new Promise<InventoryBalance[]>((resolve) => { resolveCurrent = resolve; });
+    const api = makeApi({
+      listLocations: vi.fn().mockResolvedValue([main, { id: 'second', name: 'Second Cart', isActive: true }]),
+      getBalances: vi.fn().mockResolvedValueOnce([{ locationId: 'main', productId: 'pork', quantityPieces: 25 }]).mockReturnValueOnce(oldRefresh).mockReturnValueOnce(currentStock),
+    });
+    const view = render(<SaleComposer api={api} activeLocationId="main" />);
+    fireEvent.change(await screen.findByLabelText(/find a product/i), { target: { value: 'pork' } });
+    fireEvent.click(screen.getByRole('button', { name: /add siomai pork/i }));
+    await waitForAvailability('25 pc');
+    fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Amount tendered'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Complete sale' }));
+    await screen.findByRole('region', { name: 'Receipt' });
+    expect(api.getBalances).toHaveBeenLastCalledWith('main');
+    view.rerender(<SaleComposer api={api} activeLocationId="second" />);
+    fireEvent.change(screen.getByLabelText(/find a product/i), { target: { value: 'pork' } });
+    fireEvent.click(screen.getByRole('button', { name: /add siomai pork/i }));
+    fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText('Amount tendered'), { target: { value: '3' } });
+    resolveCurrent([{ locationId: 'second', productId: 'pork', quantityPieces: 7 }]);
+    await waitForAvailability('7 pc');
+    if (outcome === 'resolves') resolveOld([{ locationId: 'main', productId: 'pork', quantityPieces: 23 }]);
+    else rejectOld(new Error('Old location refresh failed.'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Complete sale' })).toBeEnabled());
+    expect(screen.getByText(/available: 7 pc/i)).toBeInTheDocument();
+    expect(screen.queryByText(/checking availability/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/quantity for siomai pork/i)).toHaveValue(1);
+    expect(screen.getByLabelText('Amount tendered')).toHaveValue('3');
+  });
+
   it('retains the void reason and shows an API rejection inside the dialog', async () => {
     const receipt = await makeApi().completeSale({ locationId: 'main', lines: [], paymentCentavos: 1000 });
     const onVoid = vi.fn().mockRejectedValue(new Error('Sale could not be voided. Try again.'));
@@ -269,7 +305,9 @@ describe('sale composer', () => {
     fireEvent.click(within(history).getByRole('button', { name: /view receipt/i }));
     const receiptRegion = screen.getByRole('region', { name: 'Receipt' });
     expect(within(receiptRegion).getByText('Completed')).toBeInTheDocument();
-    fireEvent.click(within(receiptRegion).getByRole('button', { name: 'Void sale' }));
+    const trigger = within(receiptRegion).getByRole('button', { name: 'Void sale' });
+    trigger.focus();
+    fireEvent.click(trigger);
     expect(screen.getByRole('dialog')).toHaveTextContent(/restores each sold quantity/i);
     fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'Duplicate' } });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm void' }));
@@ -277,6 +315,7 @@ describe('sale composer', () => {
     await waitFor(() => expect(within(history).getByText('Voided')).toBeInTheDocument());
     expect(within(receiptRegion).getByText('Voided')).toBeInTheDocument();
     expect(within(receiptRegion).queryByRole('button', { name: 'Void sale' })).not.toBeInTheDocument();
+    await waitFor(() => expect(receiptRegion).toHaveFocus());
     expect(api.listSales).toHaveBeenLastCalledWith({ locationId: 'main' });
   });
 

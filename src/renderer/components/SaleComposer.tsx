@@ -47,6 +47,7 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
   const [saving, setSaving] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const nextLineId = useRef(0);
+  const balanceRequestGeneration = useRef(0);
   const focusLineId = useRef<number | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const formId = useId();
@@ -62,6 +63,7 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
   }, [api]);
 
   useEffect(() => {
+    balanceRequestGeneration.current += 1;
     if (!selectedLocationId) return;
     let active = true;
     void api.getBalances(selectedLocationId).then((value) => { if (active) setBalanceSnapshot({ context: balanceContext, balances: value }); }).catch(() => { if (active) { setBalanceSnapshot({ context: balanceContext, balances: [], failed: true }); setError('Current availability could not be loaded.'); } });
@@ -89,28 +91,40 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
     setSearch('');
   }
 
+  async function refreshAfterMutation(requestGeneration: number, operation: string) {
+    try {
+      const balances = await api.getBalances(selectedLocationId);
+      if (requestGeneration === balanceRequestGeneration.current) setBalanceSnapshot({ context: balanceContext, balances });
+    } catch {
+      if (requestGeneration === balanceRequestGeneration.current) {
+        setBalanceSnapshot({ context: balanceContext, balances: [], failed: true });
+        setError(`${operation}, but current availability could not be refreshed.`);
+      }
+    }
+  }
+
   async function complete() {
     if (!valid || !selectedLocationId || paid < 0) return;
+    const requestGeneration = balanceRequestGeneration.current;
     setError(''); setSuccess(''); setSaving(true);
     try {
       const result = await api.completeSale({ locationId: selectedLocationId, paymentCentavos: paid, note: note.trim() || undefined, lines: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity), unit: line.unit })) });
       setReceipt(result); setLines([]); setSearch(''); setTendered(''); setNote(''); setSuccess('Sale completed.');
       searchRef.current?.focus();
       onCompleted?.(result);
-      try { setBalanceSnapshot({ context: balanceContext, balances: await api.getBalances(selectedLocationId) }); }
-      catch { setBalanceSnapshot({ context: balanceContext, balances: [], failed: true }); setError('Sale completed, but current availability could not be refreshed.'); }
+      await refreshAfterMutation(requestGeneration, 'Sale completed');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The sale could not be completed.'); }
     finally { setSaving(false); }
   }
 
   async function voidReceipt(reason: string) {
     if (!receipt) return;
+    const requestGeneration = balanceRequestGeneration.current;
     setError(''); setVoiding(true);
     try {
       if (onVoid) await onVoid(receipt, reason);
       else setReceipt(await api.voidSale(receipt.id, reason));
-      try { setBalanceSnapshot({ context: balanceContext, balances: await api.getBalances(selectedLocationId) }); }
-      catch { setBalanceSnapshot({ context: balanceContext, balances: [], failed: true }); setError('Sale voided, but current availability could not be refreshed.'); }
+      await refreshAfterMutation(requestGeneration, 'Sale voided');
     }
     finally { setVoiding(false); }
   }

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { SaleReceipt as SaleReceiptData, SaleSummary } from '../../shared/schemas';
 import { formatMoney, formatMovementTimestamp } from '../pages/stock-shared';
 import DataTable from './DataTable';
@@ -14,19 +14,28 @@ export default function SaleReceipt({ receipt, onVoid, voiding = false }: { rece
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const receiptId = useId();
+  const receiptRef = useRef<HTMLElement>(null);
+  const focusAfterVoid = useRef(false);
   const busy = pending || voiding;
+
+  useLayoutEffect(() => {
+    if (!confirming && focusAfterVoid.current) {
+      focusAfterVoid.current = false;
+      receiptRef.current?.focus();
+    }
+  }, [confirming]);
 
   function cancel() { setConfirming(false); setReason(''); setError(''); }
 
   async function confirm() {
     if (!reason.trim() || busy) return;
     setPending(true); setError('');
-    try { await onVoid(reason.trim()); cancel(); }
+    try { await onVoid(reason.trim()); focusAfterVoid.current = true; cancel(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'The sale could not be voided. Try again.'); }
     finally { setPending(false); }
   }
 
-  return <section className="sale-receipt" aria-labelledby={`${receiptId}-title`}>
+  return <section className="sale-receipt" aria-labelledby={`${receiptId}-title`} ref={receiptRef} tabIndex={-1}>
     <header className="sale-receipt-heading">
       <div><p className="eyebrow">Sale {receipt.id.slice(0, 8)}</p><h2 id={`${receiptId}-title`}>Receipt</h2><p className="receipt-time">{formatMovementTimestamp(receipt.businessAt)}</p></div>
       <StatusBadge tone={receipt.status === 'voided' ? 'danger' : 'success'}>{receipt.status === 'voided' ? 'Voided' : 'Completed'}</StatusBadge>
