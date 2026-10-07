@@ -1,0 +1,70 @@
+name: macOS unsigned build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run unit, integration, renderer, and type checks
+        run: |
+          npm test
+          npm run typecheck
+          npm run lint
+
+      - name: Package the universal app
+        shell: bash
+        run: |
+          npx electron-forge package --platform=darwin --arch=universal
+          APP_PATH="$(find out -type d -path '*/darwin-universal/Siomai Inventory.app' -prune -print -quit)"
+          if [[ -z "$APP_PATH" ]]; then
+            echo '::error::Universal app was not produced.'
+            exit 1
+          fi
+          node scripts/check-package.mjs "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      # Apple Silicon refuses to launch binaries without a valid signature, and packaging
+      # invalidates Electron's original one. An ad-hoc signature needs no Apple account.
+      - name: Ad-hoc sign the app
+        shell: bash
+        run: |
+          codesign --force --deep --sign - "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+      - name: Build DMG
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          STAGING_DIR="$RUNNER_TEMP/siomai-dmg"
+          mkdir -p "$STAGING_DIR" out/release
+          ditto "$APP_PATH" "$STAGING_DIR/Siomai Inventory.app"
+          ln -s /Applications "$STAGING_DIR/Applications"
+          DMG_PATH="out/release/Siomai-Inventory-${VERSION}-universal-unsigned.dmg"
+          hdiutil create -volname 'Siomai Inventory' -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
+          echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Siomai-Inventory-unsigned-dmg
+          path: ${{ env.DMG_PATH }}
+          if-no-files-found: error
+          retention-days: 30
