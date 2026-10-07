@@ -66,6 +66,14 @@ describe('stock workflow pages', () => {
     expect((screen.getByLabelText(/quantity/i) as HTMLInputElement).value).toBe('');
   });
 
+  it('previews the resulting on-hand balance for replenishment', async () => {
+    render(<ReplenishPage api={makeApi()} />);
+    await screen.findByRole('option', { name: 'Main Cart' });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '1.5' } });
+    fireEvent.change(screen.getByLabelText(/unit/i), { target: { value: 'pack' } });
+    expect(screen.getByText('231 pc (3 packs + 33 pc)')).toBeInTheDocument();
+  });
+
   it('requires distinct source and destination for a transfer', async () => {
     const api = makeApi();
     render(<TransfersPage api={api} />);
@@ -75,10 +83,23 @@ describe('stock workflow pages', () => {
     expect(screen.getByRole('button', { name: /transfer stock/i })).toBeDisabled();
   });
 
+  it('previews source and destination balances after the transfer', async () => {
+    const api = makeApi({ getBalances: vi.fn(async (locationId: string) => locationId === 'main'
+      ? [{ locationId, productId: 'pork', quantityPieces: 132 }]
+      : [{ locationId, productId: 'pork', quantityPieces: 10 }]) });
+    render(<TransfersPage api={api} />);
+    await screen.findByLabelText(/destination location/i);
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText(/unit/i), { target: { value: 'pack' } });
+    expect(screen.getByText('Source after transfer').parentElement).toHaveTextContent('66 pc (1 pack)');
+    expect(screen.getByText('Destination after transfer').parentElement).toHaveTextContent('76 pc (1 pack + 10 pc)');
+  });
+
   it('shows count differences, requires a reason, and resets after successful submission', async () => {
     const api = makeApi({ getBalances: vi.fn().mockResolvedValue([{ locationId: 'main', productId: 'pork', quantityPieces: 66 }]) });
     render(<StockCountPage api={api} />);
     await screen.findByRole('option', { name: 'Main Cart' });
+    await screen.findByText(/expected on hand: 66 pc/i);
     fireEvent.change(screen.getByLabelText(/counted quantity/i), { target: { value: '60' } });
     expect(screen.getByText(/difference: -6 pc/i)).toBeInTheDocument();
     expect(screen.getByText(/reason is required/i)).toBeInTheDocument();
@@ -86,5 +107,56 @@ describe('stock workflow pages', () => {
     fireEvent.click(screen.getByRole('button', { name: /submit stock count/i }));
     await waitFor(() => expect(api.submitStockCount).toHaveBeenCalledWith(expect.objectContaining({ lines: [{ productId: 'pork', countedQuantity: 60, unit: 'piece', reason: 'Damaged' }] })));
     expect((screen.getByLabelText(/counted quantity/i) as HTMLInputElement).value).toBe('');
+  });
+
+  it('shows the count value impact using current purchase cost', async () => {
+    const api = makeApi({ getBalances: vi.fn().mockResolvedValue([{ locationId: 'main', productId: 'pork', quantityPieces: 66 }]) });
+    render(<StockCountPage api={api} />);
+    await screen.findByRole('option', { name: 'Main Cart' });
+    await screen.findByText(/expected on hand: 66 pc/i);
+    fireEvent.change(screen.getByLabelText(/counted quantity/i), { target: { value: '60' } });
+    expect(screen.getByText('−₱13.27')).toBeInTheDocument();
+  });
+
+  it('retains replenishment values and exposes an alert after an API rejection', async () => {
+    const api = makeApi({ recordReplenishment: vi.fn().mockRejectedValue(new Error('Replenishment unavailable.')) });
+    render(<ReplenishPage api={api} />);
+    await screen.findByRole('option', { name: 'Main Cart' });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '1.5' } });
+    fireEvent.change(screen.getByLabelText(/unit/i), { target: { value: 'pack' } });
+    fireEvent.change(screen.getByLabelText(/note/i), { target: { value: 'Supplier receipt' } });
+    fireEvent.click(screen.getByRole('button', { name: /record replenishment/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Replenishment unavailable.');
+    expect((screen.getByLabelText(/quantity/i) as HTMLInputElement).value).toBe('1.5');
+    expect((screen.getByLabelText(/unit/i) as HTMLSelectElement).value).toBe('pack');
+    expect((screen.getByLabelText(/note/i) as HTMLInputElement).value).toBe('Supplier receipt');
+  });
+
+  it('retains transfer values and exposes an alert after an API rejection', async () => {
+    const api = makeApi({ transferStock: vi.fn().mockRejectedValue(new Error('Transfer unavailable.')) });
+    render(<TransfersPage api={api} />);
+    await screen.findByLabelText(/destination location/i);
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText(/unit/i), { target: { value: 'pack' } });
+    fireEvent.change(screen.getByLabelText(/note/i), { target: { value: 'Move to market' } });
+    fireEvent.click(screen.getByRole('button', { name: /transfer stock/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Transfer unavailable.');
+    expect((screen.getByLabelText(/quantity/i) as HTMLInputElement).value).toBe('1');
+    expect((screen.getByLabelText(/unit/i) as HTMLSelectElement).value).toBe('pack');
+    expect((screen.getByLabelText(/note/i) as HTMLInputElement).value).toBe('Move to market');
+  });
+
+  it('retains count values and exposes an alert after an API rejection', async () => {
+    const api = makeApi({ submitStockCount: vi.fn().mockRejectedValue(new Error('Count unavailable.')) });
+    render(<StockCountPage api={api} />);
+    await screen.findByRole('option', { name: 'Main Cart' });
+    fireEvent.change(screen.getByLabelText(/counted quantity/i), { target: { value: '120' } });
+    fireEvent.change(screen.getByLabelText(/unit/i), { target: { value: 'pack' } });
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'Breakage' } });
+    fireEvent.click(screen.getByRole('button', { name: /submit stock count/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Count unavailable.');
+    expect((screen.getByLabelText(/counted quantity/i) as HTMLInputElement).value).toBe('120');
+    expect((screen.getByLabelText(/unit/i) as HTMLSelectElement).value).toBe('pack');
+    expect((screen.getByLabelText(/reason/i) as HTMLTextAreaElement).value).toBe('Breakage');
   });
 });

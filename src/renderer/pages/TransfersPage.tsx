@@ -16,7 +16,8 @@ export default function TransfersPage({ api = getInventoryApi(), activeLocationI
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState<'piece' | 'pack'>('piece');
   const [note, setNote] = useState('');
-  const [balances, setBalances] = useState<InventoryBalance[]>([]);
+  const [sourceBalances, setSourceBalances] = useState<InventoryBalance[]>([]);
+  const [destinationBalances, setDestinationBalances] = useState<InventoryBalance[]>([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const previousSourceId = useRef(selectedSourceId);
@@ -33,11 +34,13 @@ export default function TransfersPage({ api = getInventoryApi(), activeLocationI
   }, [api]);
 
   useEffect(() => {
-    if (!selectedSourceId) return;
+    if (!selectedSourceId || !destinationId || selectedSourceId === destinationId) return;
     let active = true;
-    void api.getBalances(selectedSourceId).then((value) => { if (active) setBalances(value); }).catch(() => { if (active) setError('Source stock could not be loaded.'); });
+    void Promise.all([api.getBalances(selectedSourceId), api.getBalances(destinationId)]).then(([source, destination]) => {
+      if (active) { setSourceBalances(source); setDestinationBalances(destination); }
+    }).catch(() => { if (active) setError('Location stock could not be loaded.'); });
     return () => { active = false; };
-  }, [api, selectedSourceId]);
+  }, [api, selectedSourceId, destinationId]);
 
   useEffect(() => {
     if (previousSourceId.current === selectedSourceId) return;
@@ -46,7 +49,8 @@ export default function TransfersPage({ api = getInventoryApi(), activeLocationI
   }, [destinationId, locations, selectedSourceId]);
 
   const product = products.find((item) => item.id === productId);
-  const available = balances.find((balance) => balance.productId === productId)?.quantityPieces ?? 0;
+  const available = sourceBalances.find((balance) => balance.productId === productId)?.quantityPieces ?? 0;
+  const destinationAvailable = destinationBalances.find((balance) => balance.productId === productId)?.quantityPieces ?? 0;
   let pieces = 0;
   try { if (quantity && product) pieces = toPieces(Number(quantity), unit, product.piecesPerPack); } catch { /* invalid conversions remain unsubmitable */ }
   const distinctLocations = selectedSourceId !== '' && destinationId !== '' && selectedSourceId !== destinationId;
@@ -59,7 +63,9 @@ export default function TransfersPage({ api = getInventoryApi(), activeLocationI
     setError(''); setSuccess('');
     try {
       await api.transferStock({ fromLocationId: selectedSourceId, toLocationId: destinationId, note: note.trim() || undefined, lines: [{ productId, quantity: Number(quantity), unit }] });
-      setQuantity(''); setNote(''); setSuccess('Stock transfer recorded.'); setBalances(await api.getBalances(selectedSourceId));
+      setQuantity(''); setNote(''); setSuccess('Stock transfer recorded.');
+      const [source, destination] = await Promise.all([api.getBalances(selectedSourceId), api.getBalances(destinationId)]);
+      setSourceBalances(source); setDestinationBalances(destination);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Transfer could not be recorded.'); }
   }
 
@@ -73,6 +79,6 @@ export default function TransfersPage({ api = getInventoryApi(), activeLocationI
       <label className="form-field">Note<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
       {error && <p role="alert" className="field-error">{error}</p>}{success && <p role="status" className="success-note">{success}</p>}
       <button className="primary-button" type="submit" disabled={disabled}>Transfer stock</button>
-    </form><aside className="workflow-summary" aria-label="Transfer summary"><p className="empty-kicker">CONFIRMATION</p><h2>{locations.find((item) => item.id === selectedSourceId)?.name ?? 'Source'} → {locations.find((item) => item.id === destinationId)?.name ?? 'Destination'}</h2><dl><div><dt>Product</dt><dd>{product?.name ?? '—'}</dd></div><div><dt>Transfer quantity</dt><dd>{pieces ? formatQuantity(pieces, product?.piecesPerPack ?? 1) : '—'}</dd></div></dl><p>Both location balances update together in the stock ledger.</p></aside></div>
+    </form><aside className="workflow-summary" aria-label="Transfer summary"><p className="empty-kicker">CONFIRMATION</p><h2>{locations.find((item) => item.id === selectedSourceId)?.name ?? 'Source'} → {locations.find((item) => item.id === destinationId)?.name ?? 'Destination'}</h2><dl><div><dt>Product</dt><dd>{product?.name ?? '—'}</dd></div><div><dt>Transfer quantity</dt><dd>{pieces ? formatQuantity(pieces, product?.piecesPerPack ?? 1) : '—'}</dd></div><div><dt>Source after transfer</dt><dd>{enoughStock ? formatQuantity(available - pieces, product?.piecesPerPack ?? 1) : '—'}</dd></div><div><dt>Destination after transfer</dt><dd>{enoughStock ? formatQuantity(destinationAvailable + pieces, product?.piecesPerPack ?? 1) : '—'}</dd></div></dl><p>Both location balances update together in the stock ledger.</p></aside></div>
   </section>;
 }

@@ -88,7 +88,14 @@ export default function ReplenishPage({ api = getInventoryApi(), activeLocationI
         {error && <p role="alert" className="field-error">{error}</p>}{success && <p role="status" className="success-note">{success}</p>}
         <button className="primary-button" type="submit" disabled={!valid || !selectedLocationId}>Record replenishment</button>
       </form>
-      <aside className="workflow-summary" aria-label="Replenishment summary"><p className="empty-kicker">CONFIRMATION</p><h2>Stock received</h2><dl><div><dt>Products</dt><dd>{lines.filter((line, index) => previews[index].pieces > 0).length}</dd></div><div><dt>Total pieces</dt><dd>{previews.reduce((sum, preview) => sum + preview.pieces, 0)}</dd></div><div><dt>Total cost</dt><dd>{formatMoney(totalCost)}</dd></div></dl><p>Each line keeps the current purchase cost as a ledger snapshot.</p></aside>
+      <aside className="workflow-summary" aria-label="Replenishment summary"><p className="empty-kicker">CONFIRMATION</p><h2>Stock received</h2><dl><div><dt>Products</dt><dd>{lines.filter((line, index) => previews[index].pieces > 0).length}</dd></div><div><dt>Total pieces</dt><dd>{previews.reduce((sum, preview) => sum + preview.pieces, 0)}</dd></div><div><dt>Total cost</dt><dd>{formatMoney(totalCost)}</dd></div></dl>
+        <h3 className="summary-subheading">On hand after replenishment</h3>
+        <ul className="balance-preview-list">{lines.map((line, index) => {
+          const preview = previews[index];
+          const current = availability.get(line.productId) ?? 0;
+          return <li key={line.productId || index}><span>{preview.product?.name ?? 'Select a product'}</span><strong>{formatQuantity(current + preview.pieces, preview.product?.piecesPerPack ?? 1)}</strong></li>;
+        })}</ul>
+        <p>Each line keeps the current purchase cost as a ledger snapshot.</p></aside>
     </div>
   </section>;
 }

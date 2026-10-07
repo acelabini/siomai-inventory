@@ -3,7 +3,7 @@ import type { InventoryApi } from '../../shared/contracts';
 import type { CatalogLocation, CatalogProduct, InventoryBalance } from '../../shared/schemas';
 import { toPieces } from '../../main/domain/quantities';
 import { getInventoryApi } from '../api';
-import { LocationSelect } from './stock-shared';
+import { formatMoney, LocationSelect } from './stock-shared';
 
 export default function StockCountPage({ api = getInventoryApi(), activeLocationId, onLocationChange }: { api?: InventoryApi; activeLocationId?: string; onLocationChange?: (locationId: string) => void }) {
   const [locations, setLocations] = useState<CatalogLocation[]>([]);
@@ -42,6 +42,8 @@ export default function StockCountPage({ api = getInventoryApi(), activeLocation
   let countedPieces: number | null = null;
   try { if (countedQuantity !== '' && product) countedPieces = Number(countedQuantity) === 0 ? 0 : toPieces(Number(countedQuantity), unit, product.piecesPerPack); } catch { /* show no difference for non-piece conversions */ }
   const difference = countedPieces === null ? null : countedPieces - expectedPieces;
+  const valueImpact = difference === null || !product ? null : Math.round(product.purchaseCostPerPackCentavos * difference / product.piecesPerPack);
+  const signedValueImpact = valueImpact === null ? '—' : `${valueImpact > 0 ? '+' : valueImpact < 0 ? '−' : ''}${formatMoney(Math.abs(valueImpact))}`;
   const requiresReason = difference !== null && difference !== 0;
   const valid = countedPieces !== null && (!requiresReason || reason.trim().length > 0);
 
@@ -65,6 +67,6 @@ export default function StockCountPage({ api = getInventoryApi(), activeLocation
       {requiresReason && !reason.trim() && <p className="field-error">Reason is required for a discrepancy.</p>}
       {error && <p role="alert" className="field-error">{error}</p>}{success && <p role="status" className="success-note">{success}</p>}
       <button className="primary-button" type="submit" disabled={!valid}>Submit stock count</button>
-    </form><aside className="workflow-summary" aria-label="Stock-count summary"><p className="empty-kicker">COUNT SUMMARY</p><h2>{product?.name ?? 'Select product'}</h2><dl><div><dt>Expected</dt><dd>{expectedPieces} pc</dd></div><div><dt>Counted</dt><dd>{countedPieces ?? '—'} pc</dd></div><div><dt>Difference</dt><dd className={difference ? 'discrepancy-text' : ''}>{difference === null ? '—' : `${difference > 0 ? '+' : ''}${difference} pc`}</dd></div></dl><p>Any adjustment is recorded with its reason in the movement history.</p></aside></div>
+    </form><aside className="workflow-summary" aria-label="Stock-count summary"><p className="empty-kicker">COUNT SUMMARY</p><h2>{product?.name ?? 'Select product'}</h2><dl><div><dt>Expected</dt><dd>{expectedPieces} pc</dd></div><div><dt>Counted</dt><dd>{countedPieces ?? '—'} pc</dd></div><div><dt>Difference</dt><dd className={difference ? 'discrepancy-text' : ''}>{difference === null ? '—' : `${difference > 0 ? '+' : ''}${difference} pc`}</dd></div><div><dt>Value impact</dt><dd className={valueImpact ? 'discrepancy-text' : ''}>{signedValueImpact}</dd></div></dl><p>Any adjustment is recorded with its reason in the movement history.</p></aside></div>
   </section>;
 }

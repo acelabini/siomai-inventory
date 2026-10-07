@@ -229,13 +229,14 @@ describe('dashboard and reports', () => {
     for (const workflow of ['Sales', 'Inventory', 'Replenish', 'Transfers', 'Stock count']) {
       const callCount = (api.getBalances as ReturnType<typeof vi.fn>).mock.calls.length;
       fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: workflow === 'Sales' ? 'New sale' : workflow }));
-      await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(callCount + 1));
-      expect(api.getBalances).toHaveBeenLastCalledWith('branch');
+      const expectedBalanceRequests = workflow === 'Transfers' ? 2 : 1;
+      await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(callCount + expectedBalanceRequests));
+      expect(api.getBalances).toHaveBeenCalledWith('branch');
     }
 
     fireEvent.click(screen.getByRole('button', { name: 'Transfers' }));
     fireEvent.change(await screen.findByLabelText(/source location/i), { target: { value: 'main' } });
     expect(globalLocation.value).toBe('main');
-    await waitFor(() => expect(api.getBalances).toHaveBeenLastCalledWith('main'));
+    await waitFor(() => expect(api.getBalances).toHaveBeenCalledWith('main'));
   });
 });

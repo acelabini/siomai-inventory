@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { InventoryApi } from '../../shared/contracts';
 import type { CatalogLocation, CatalogProduct, InventoryBalance, StockMovement } from '../../shared/schemas';
+import Button from '../components/ui/Button';
+import DataTable from '../components/DataTable';
+import InlineNotice from '../components/ui/InlineNotice';
+import PageHeader from '../components/ui/PageHeader';
+import StatusBadge from '../components/ui/StatusBadge';
 import { getInventoryApi } from '../api';
 import { formatMoney, formatMovementTimestamp, formatQuantity, LocationSelect } from './stock-shared';
 
-export default function InventoryPage({ api = getInventoryApi(), activeLocationId, onLocationChange }: { api?: InventoryApi; activeLocationId?: string; onLocationChange?: (locationId: string) => void }) {
+export default function InventoryPage({ api = getInventoryApi(), activeLocationId, onLocationChange, onNavigate }: { api?: InventoryApi; activeLocationId?: string; onLocationChange?: (locationId: string) => void; onNavigate?: (page: string) => void }) {
   const [locations, setLocations] = useState<CatalogLocation[]>([]);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
@@ -12,6 +17,8 @@ export default function InventoryPage({ api = getInventoryApi(), activeLocationI
   const [locationId, setLocationId] = useState('');
   const selectedLocationId = activeLocationId ?? locationId;
   const updateLocation = (value: string) => activeLocationId === undefined ? setLocationId(value) : onLocationChange?.(value);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'low'>('all');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -33,22 +40,40 @@ export default function InventoryPage({ api = getInventoryApi(), activeLocationI
     return () => { active = false; };
   }, [api, selectedLocationId]);
 
-  const quantityByProduct = new Map(balances.map((balance) => [balance.productId, balance.quantityPieces]));
   const productById = new Map(products.map((product) => [product.id, product]));
+  const quantityByProduct = new Map(balances.map((balance) => [balance.productId, balance.quantityPieces]));
+  const rows = products.map((product) => {
+    const quantity = quantityByProduct.get(product.id) ?? 0;
+    return { product, quantity, value: Math.round(product.purchaseCostPerPackCentavos * quantity / product.piecesPerPack) };
+  }).filter(({ product, quantity }) => {
+    const matchesSearch = `${product.name} ${product.sku}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
+    const isLow = product.lowStockThresholdPieces > 0 && quantity <= product.lowStockThresholdPieces;
+    return matchesSearch && (statusFilter === 'all' || isLow);
+  });
+
   return <section className="ledger-page" aria-labelledby="inventory-title">
-    <div className="page-heading"><div><p className="eyebrow">STOCK LEDGER</p><h1 id="inventory-title">Inventory</h1></div>
-      {locations.length > 0 && <LocationSelect locations={locations} value={selectedLocationId} onChange={updateLocation} />}</div>
+    <PageHeader eyebrow="Stock ledger" title="Inventory" titleId="inventory-title" actions={<>
+      <Button variant="secondary" icon="replenish" onClick={() => onNavigate?.('Replenish')}>Replenish</Button>
+      <Button variant="primary" icon="count" onClick={() => onNavigate?.('Stock count')}>Stock count</Button>
+    </>} />
+    <div className="inventory-context-row">
+      {locations.length > 0 && <LocationSelect locations={locations} value={selectedLocationId} onChange={updateLocation} />}
+      <label className="form-field inventory-search">Search inventory<input type="search" aria-label="Search inventory" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Product or SKU" /></label>
+      <label className="form-field inventory-status-filter">Stock status<select aria-label="Stock status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | 'low')}><option value="all">All stock</option><option value="low">Low stock</option></select></label>
+    </div>
     <div className="ledger-ribbon" aria-label="Stock movement sequence"><span>Opening</span><span aria-hidden="true">→</span><span>Replenished</span><span aria-hidden="true">→</span><span>Sold</span><span aria-hidden="true">→</span><strong>On hand</strong></div>
-    {error && <p className="field-error" role="alert">{error}</p>}
-    <div className="catalog-table-wrap inventory-table-wrap"><table className="catalog-table"><thead><tr><th>Product</th><th>SKU</th><th>On hand</th><th>Low stock at</th><th>Stock value</th></tr></thead><tbody>
-      {products.map((product) => {
-        const quantity = quantityByProduct.get(product.id) ?? 0;
-        const value = Math.round(product.purchaseCostPerPackCentavos * quantity / product.piecesPerPack);
-        return <tr key={product.id}><td>{product.name}</td><td className="mono">{product.sku}</td><td>{formatQuantity(quantity, product.piecesPerPack)}</td><td>{product.lowStockThresholdPieces ? `${product.lowStockThresholdPieces} pc` : '—'}</td><td>{formatMoney(value)}</td></tr>;
-      })}
-    </tbody></table>{products.length === 0 && <p className="empty-note">No active products yet.</p>}</div>
+    {error && <InlineNotice tone="danger" title="Inventory could not be loaded" role="alert">Check the selected location and try again.</InlineNotice>}
+    <DataTable label="Inventory" className="inventory-table-wrap" rows={rows} rowKey={(row) => row.product.id} empty={search || statusFilter === 'low' ? 'No products match these filters.' : 'No active products yet.'} columns={[
+      { key: 'product', label: 'Product', render: (row) => <div className="inventory-product"><strong>{row.product.name}</strong><small>{row.product.sku}</small></div> },
+      { key: 'on-hand', label: 'On hand', numeric: true, render: (row) => formatQuantity(row.quantity, row.product.piecesPerPack) },
+      { key: 'status', label: 'Status', render: (row) => row.product.lowStockThresholdPieces > 0 && row.quantity <= row.product.lowStockThresholdPieces
+        ? <StatusBadge tone="warning">Low stock</StatusBadge>
+        : <StatusBadge tone="success">Healthy</StatusBadge> },
+      { key: 'threshold', label: 'Low stock at', numeric: true, render: (row) => row.product.lowStockThresholdPieces ? `${row.product.lowStockThresholdPieces} pc` : '—' },
+      { key: 'value', label: 'Stock value', numeric: true, render: (row) => formatMoney(row.value) },
+    ]} />
     <section className="movement-panel" aria-labelledby="movement-title"><h2 id="movement-title">Recent stock movements</h2>
-      {movements.length === 0 ? <p className="empty-note">No stock movements at this location.</p> : <div className="catalog-table-wrap"><table className="catalog-table"><thead><tr><th>When</th><th>Product</th><th>Movement</th><th>Quantity</th><th>Note</th></tr></thead><tbody>
+      {movements.length === 0 ? <p className="empty-note">No stock movements at this location.</p> : <div className="catalog-table-wrap"><table className="catalog-table" aria-label="Recent stock movements"><thead><tr><th>When</th><th>Product</th><th>Movement</th><th>Quantity</th><th>Note</th></tr></thead><tbody>
         {movements.map((movement) => <tr key={movement.id}><td>{formatMovementTimestamp(movement.occurredAt)}</td><td>{productById.get(movement.productId)?.name ?? movement.productName}</td><td>{movement.movementType.replaceAll('_', ' ')}</td><td className="mono">{movement.quantityPieces > 0 ? '+' : ''}{movement.quantityPieces} pc</td><td>{movement.note ?? '—'}</td></tr>)}
       </tbody></table></div>}
     </section>
