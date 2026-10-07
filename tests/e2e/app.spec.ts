@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -11,6 +11,30 @@ let application: ElectronApplication;
 let page: Page;
 const appRoot = path.resolve(process.cwd());
 const openingPieces = 500;
+const screenshots = path.join(appRoot, 'out', 'e2e-screenshots');
+test.setTimeout(120_000);
+
+async function completeSampleSetup(businessName: string, locationName: string) {
+  await page.getByLabel('Business name').fill(businessName);
+  await page.getByLabel('Location name').fill(locationName);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('checkbox', { name: /Siomai/ }).first().check();
+  await page.getByRole('button', { name: 'Continue to opening stock' }).click();
+  await page.getByLabel(/Opening pieces for/).first().fill(String(openingPieces));
+  await page.getByRole('button', { name: 'Finish setup' }).click();
+  await expect(page.getByRole('heading', { name: 'Today at a glance' })).toBeVisible();
+}
+
+async function assertNoDocumentOverflow() {
+  await expect.poll(() => page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )).toBe(0);
+}
+
+async function capture(name: string, width: number) {
+  await mkdir(screenshots, { recursive: true });
+  await page.screenshot({ path: path.join(screenshots, `${name}-${width}.png`), fullPage: true });
+}
 
 async function launch(): Promise<ElectronApplication> {
   return electron.launch({
@@ -54,33 +78,36 @@ test('completes setup, stock workflows, report export, restart, void, and manual
   const openingField = page.getByLabel(/Opening pieces for/).first();
   await openingField.fill(String(openingPieces));
   await page.getByRole('button', { name: 'Finish setup' }).click();
-  await expect(page.getByRole('heading', { name: 'Today’s ledger' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today at a glance' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Products' }).click();
   await page.getByRole('button', { name: 'Edit' }).first().click();
-  await page.getByLabel('Selling price per piece (centavos)').fill('2500');
-  await page.getByLabel('Selling price per pack (centavos)').fill('20000');
+  await page.getByLabel('Selling price per piece (pesos)').fill('25');
+  await page.getByLabel('Selling price per pack (pesos)').fill('200');
   await page.getByRole('button', { name: 'Save product' }).click();
 
-  const products = await bridge<Array<{ id: string; name: string; piecesPerPack: number }>>('listProducts');
+  const products = await bridge<Array<{ id: string; name: string; sku: string; piecesPerPack: number }>>('listProducts');
   const product = products[0]!;
   await page.getByRole('button', { name: 'Locations' }).click();
+  await expect(page.getByRole('heading', { name: 'Locations', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Add location' }).first().click();
   await page.getByLabel('Location name').fill('Prep Store');
   await page.getByRole('button', { name: 'Save location' }).click();
   await expect(page.getByText('Prep Store', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Sales' }).click();
+  await page.getByRole('button', { name: 'New sale' }).first().click();
   await page.getByLabel('Find a product').fill(product.name);
-  await page.getByRole('button', { name: new RegExp(product.name) }).click();
+  await page.getByRole('button', { name: `Add ${product.name} (${product.sku})` }).click();
   await page.getByLabel(`Quantity for ${product.name}`).fill('2');
   await page.getByLabel(`Unit for ${product.name}`).selectOption('piece');
   await page.getByLabel('Amount tendered').fill('50');
   await page.getByRole('button', { name: 'Complete sale' }).click();
   await expect(page.getByRole('status')).toContainText('Sale completed.');
   await expect(page.getByRole('heading', { name: 'Receipt' })).toBeVisible();
+  await expect(page.locator('.sale-receipt').getByText('Completed', { exact: true })).toBeVisible();
 
   await page.getByLabel('Find a product').fill(product.name);
-  await page.getByRole('button', { name: new RegExp(product.name) }).click();
+  await page.getByRole('button', { name: `Add ${product.name} (${product.sku})` }).click();
   await page.getByLabel(`Quantity for ${product.name}`).fill('1');
   await page.getByLabel(`Unit for ${product.name}`).selectOption('pack');
   await page.getByLabel('Amount tendered').fill('200');
@@ -104,7 +131,7 @@ test('completes setup, stock workflows, report export, restart, void, and manual
   await expect(page.getByRole('status')).toContainText('Stock count recorded.');
 
   await page.getByRole('button', { name: 'Reports' }).click();
-  await page.getByLabel('Export').selectOption('sales');
+  await page.getByLabel('Report type').selectOption('sales');
   await page.getByRole('button', { name: 'Export CSV' }).click();
   await expect(page.getByRole('status')).toContainText('CSV export saved.');
   await expect.poll(async () => readFile(exportPath, 'utf8')).toContain('grossProfit');
@@ -112,22 +139,140 @@ test('completes setup, stock workflows, report export, restart, void, and manual
   await application.close();
   application = await launch();
   page = await application.firstWindow();
-  await expect(page.getByRole('heading', { name: 'Today’s ledger' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today at a glance' })).toBeVisible();
   const locations = await bridge<Array<{ id: string; name: string }>>('listLocations');
   const main = locations.find((location) => location.name === 'Main Cart')!;
   const persisted = await bridge<Array<{ productId: string; quantityPieces: number }>>('getBalances', main.id);
   expect(persisted.find((item) => item.productId === product.id)?.quantityPieces).toBe(expectedCount);
-  await page.getByRole('button', { name: 'Sales' }).click();
+  await page.getByRole('button', { name: 'New sale' }).first().click();
   await page.getByRole('button', { name: 'View receipt' }).first().click();
   await page.getByRole('button', { name: 'Void sale' }).click();
-  await page.getByLabel('Reason').fill('E2E void');
+  await page.getByLabel(/reason/i).fill('E2E void');
   await page.getByRole('button', { name: 'Confirm void' }).click();
-  await expect(page.getByText('VOIDED SALE')).toBeVisible();
+  await expect(page.locator('.sale-receipt').getByText('Voided', { exact: true })).toBeVisible();
   const afterVoid = await bridge<Array<{ productId: string; quantityPieces: number }>>('getBalances', main.id);
   expect(afterVoid.find((item) => item.productId === product.id)?.quantityPieces).toBe(expectedCount + product.piecesPerPack);
   await page.getByRole('button', { name: 'Settings' }).click();
-  await page.getByRole('button', { name: 'Create backup now' }).click();
-  await expect(page.getByRole('status')).toContainText('Backup created:');
+  await page.getByRole('button', { name: 'Create manual backup' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Manual backup created.' })).toBeVisible();
   expect((await readdir(path.join(userData, 'backups'))).some((file) => file.startsWith('manual-') && file.endsWith('.sqlite'))).toBe(true);
   expect(await bridge('getSetupState')).toMatchObject({ complete: true, businessName: 'E2E Siomai Cart' });
+});
+
+test('keeps pages and full names usable at wide, medium, and narrow desktop widths', async () => {
+  const businessName = `Siomai cart ${'North market kiosk '.repeat(5)}`.slice(0, 118).trim();
+  const locationName = `Main cart ${'Harbor entrance stall '.repeat(5)}`.slice(0, 118);
+  const productName = `Special siomai ${'chili garlic family pack '.repeat(4)}`.slice(0, 118);
+  const remoteRequests: string[] = [];
+  page.on('request', (request) => { if (/^https?:/i.test(request.url())) remoteRequests.push(request.url()); });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByLabel('Business name').fill(businessName);
+  await page.getByLabel('Location name').fill(locationName);
+  await assertNoDocumentOverflow();
+  await capture('setup', 1280);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('checkbox', { name: /Siomai/ }).first().check();
+  await page.getByRole('button', { name: 'Continue to opening stock' }).click();
+  await page.getByLabel(/Opening pieces for/).first().fill(String(openingPieces));
+  await page.getByRole('button', { name: 'Finish setup' }).click();
+  await expect(page.getByRole('heading', { name: 'Today at a glance' })).toBeVisible();
+  await expect(page.getByLabel('Current location')).toHaveAttribute('title', locationName);
+
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Products' }).click();
+  await page.getByRole('button', { name: 'Edit' }).first().click();
+  await page.getByLabel('Product name').fill(productName);
+  await page.getByRole('button', { name: 'Save product' }).click();
+  await expect(page.getByLabel(productName, { exact: true })).toBeVisible();
+
+  const views = [
+    { nav: 'Overview', heading: 'Today at a glance', action: 'New sale', slug: 'overview' },
+    { nav: 'New sale', heading: 'New sale', action: 'Complete sale', slug: 'new-sale' },
+    { nav: 'Inventory', heading: 'Inventory', action: 'Stock count', slug: 'inventory' },
+    { nav: 'Reports', heading: 'Reports', action: 'Export CSV', slug: 'reports' },
+    { nav: 'Products', heading: 'Products', action: 'Add product', slug: 'products' },
+    { nav: 'Settings', heading: 'Settings', action: 'Create manual backup', slug: 'settings' },
+    { nav: 'Import data', heading: 'Import data', action: 'Choose CSV file', slug: 'import' },
+  ] as const;
+  for (const width of [1280, 980, 760]) {
+    await page.setViewportSize({ width, height: 900 });
+    const railLabelWidth = await page.locator('.nav-link-label').first().evaluate((element) => element.getBoundingClientRect().width);
+    if (width === 1280) expect(railLabelWidth).toBeGreaterThan(1);
+    else expect(railLabelWidth).toBeLessThanOrEqual(1);
+    for (const view of views) {
+      const nav = page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: view.nav });
+      await expect(nav).toBeVisible();
+      await nav.click();
+      await expect(nav).toHaveAttribute('aria-current', 'page');
+      await expect(page.getByRole('heading', { name: view.heading, exact: true, level: 1 })).toBeVisible();
+      await expect(page.getByRole('button', { name: view.action }).last()).toBeVisible();
+      if (view.slug === 'new-sale') {
+        const workflow = await page.locator('.sale-workflow').boundingBox();
+        const summary = await page.locator('.sale-checkout-summary').boundingBox();
+        expect(workflow).not.toBeNull();
+        expect(summary).not.toBeNull();
+        if (width === 1280) expect(summary!.x).toBeGreaterThan(workflow!.x);
+        else expect(summary!.y).toBeGreaterThan(workflow!.y);
+      }
+      if (view.slug === 'inventory') {
+        const table = page.locator('.data-table-scroll.inventory-table-wrap');
+        await expect(table).toHaveAttribute('tabindex', '0');
+        expect(await table.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(width === 760);
+      }
+      await assertNoDocumentOverflow();
+      if (width === 1280 || ['overview', 'new-sale', 'inventory', 'reports'].includes(view.slug)) await capture(view.slug, width);
+    }
+  }
+
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Settings' }).click();
+  await expect(page.getByLabel('Business name')).toHaveValue(businessName);
+  await page.getByRole('button', { name: 'Create manual backup' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Manual backup created.' })).toBeVisible();
+  const backupName = (await readdir(path.join(userData, 'backups'))).find((name) => name.startsWith('manual-'))!;
+  await expect(page.getByText('Last successful backup:')).toContainText(backupName);
+  await expect(page.getByText('Last successful backup:').locator('span')).toHaveAttribute('title', backupName);
+  await assertNoDocumentOverflow();
+
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Reports' }).click();
+  await page.emulateMedia({ media: 'print' });
+  expect(await page.locator('.sidebar').evaluate((element) => getComputedStyle(element).display)).toBe('none');
+  expect(await page.locator('.topbar').evaluate((element) => getComputedStyle(element).display)).toBe('none');
+  expect(await page.locator('.report-filters').evaluate((element) => getComputedStyle(element).display)).toBe('none');
+  expect(await page.locator('.data-table-scroll').first().evaluate((element) => getComputedStyle(element).overflowX)).toBe('visible');
+  await expect(page.getByRole('heading', { name: 'Reports', exact: true })).toBeVisible();
+  await page.emulateMedia({ media: 'screen', reducedMotion: 'reduce' });
+  expect(await page.getByRole('button', { name: 'Print report' }).evaluate((element) => getComputedStyle(element).transitionDuration)).toBe('1e-05s');
+  expect(remoteRequests).toEqual([]);
+});
+
+test('keyboard navigation and Escape keep destructive actions canceled', async () => {
+  await completeSampleSetup('Keyboard cart', 'Main cart');
+  const navigation = page.getByRole('navigation', { name: 'Primary' });
+  await page.keyboard.press('Tab');
+  await expect(navigation.getByRole('button', { name: 'Overview' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(navigation.getByRole('button', { name: 'New sale' })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(navigation.getByRole('button', { name: 'Overview' })).toBeFocused();
+  await navigation.getByRole('button', { name: 'Products' }).click();
+  const primaryAction = page.getByRole('button', { name: 'Add product' }).first();
+  await expect(primaryAction).toBeVisible();
+  for (let step = 0; step < 16 && !(await primaryAction.evaluate((element) => element === document.activeElement)); step += 1) {
+    await page.keyboard.press('Tab');
+  }
+  await expect(primaryAction).toBeFocused();
+  const product = (await bridge<Array<{ id: string; name: string }>>('listProducts'))[0]!;
+  const trigger = page.getByRole('button', { name: `Archive ${product.name}` });
+  await trigger.click();
+  const dialog = page.getByRole('dialog', { name: `Archive ${product.name}?` });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  for (const key of ['Tab', 'Shift+Tab', 'Tab']) {
+    await page.keyboard.press(key);
+    expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  }
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+  expect((await bridge<Array<{ id: string }>>('listProducts')).some((item) => item.id === product.id)).toBe(true);
 });
