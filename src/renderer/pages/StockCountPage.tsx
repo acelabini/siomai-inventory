@@ -3,7 +3,7 @@ import type { InventoryApi } from '../../shared/contracts';
 import type { CatalogLocation, CatalogProduct, InventoryBalance } from '../../shared/schemas';
 import { toPieces } from '../../main/domain/quantities';
 import { getInventoryApi } from '../api';
-import { formatMoney, LocationSelect } from './stock-shared';
+import { formatMoney, LocationSelect, proratedCentavos } from './stock-shared';
 
 export default function StockCountPage({ api = getInventoryApi(), activeLocationId, onLocationChange }: { api?: InventoryApi; activeLocationId?: string; onLocationChange?: (locationId: string) => void }) {
   const [locations, setLocations] = useState<CatalogLocation[]>([]);
@@ -42,7 +42,8 @@ export default function StockCountPage({ api = getInventoryApi(), activeLocation
   let countedPieces: number | null = null;
   try { if (countedQuantity !== '' && product) countedPieces = Number(countedQuantity) === 0 ? 0 : toPieces(Number(countedQuantity), unit, product.piecesPerPack); } catch { /* show no difference for non-piece conversions */ }
   const difference = countedPieces === null ? null : countedPieces - expectedPieces;
-  const valueImpact = difference === null || !product ? null : Math.round(product.purchaseCostPerPackCentavos * difference / product.piecesPerPack);
+  let valueImpact: number | null = null;
+  try { if (difference !== null && product) valueImpact = proratedCentavos(product.purchaseCostPerPackCentavos, difference, product.piecesPerPack); } catch { /* out-of-range previews remain unavailable */ }
   const signedValueImpact = valueImpact === null ? '—' : `${valueImpact > 0 ? '+' : valueImpact < 0 ? '−' : ''}${formatMoney(Math.abs(valueImpact))}`;
   const requiresReason = difference !== null && difference !== 0;
   const valid = countedPieces !== null && (!requiresReason || reason.trim().length > 0);

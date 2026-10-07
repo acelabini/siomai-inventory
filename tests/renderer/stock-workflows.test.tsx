@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryApi } from '../../src/shared/contracts';
-import type { CatalogLocation, CatalogProduct } from '../../src/shared/schemas';
+import type { CatalogLocation, CatalogProduct, InventoryBalance } from '../../src/shared/schemas';
 import InventoryPage from '../../src/renderer/pages/InventoryPage';
 import ReplenishPage from '../../src/renderer/pages/ReplenishPage';
 import TransfersPage from '../../src/renderer/pages/TransfersPage';
@@ -74,6 +74,15 @@ describe('stock workflow pages', () => {
     expect(screen.getByText('231 pc (3 packs + 33 pc)')).toBeInTheDocument();
   });
 
+  it('rounds large replenishment costs in centavos with exact integer arithmetic', async () => {
+    const expensive = { ...pork, piecesPerPack: 3, purchaseCostPerPackCentavos: Number.MAX_SAFE_INTEGER };
+    const api = makeApi({ listProducts: vi.fn().mockResolvedValue([expensive]) });
+    render(<ReplenishPage api={api} />);
+    await screen.findByRole('option', { name: 'Main Cart' });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '1' } });
+    expect(screen.getByText('₱30,023,997,515,803.30')).toBeInTheDocument();
+  });
+
   it('requires distinct source and destination for a transfer', async () => {
     const api = makeApi();
     render(<TransfersPage api={api} />);
@@ -93,6 +102,27 @@ describe('stock workflow pages', () => {
     fireEvent.change(screen.getByLabelText(/unit/i), { target: { value: 'pack' } });
     expect(screen.getByText('Source after transfer').parentElement).toHaveTextContent('66 pc (1 pack)');
     expect(screen.getByText('Destination after transfer').parentElement).toHaveTextContent('76 pc (1 pack + 10 pc)');
+  });
+
+  it('keeps transfer disabled on stale balances until the selected locations finish loading', async () => {
+    const pending: Array<{ locationId: string; resolve: (balances: InventoryBalance[]) => void }> = [];
+    const api = makeApi({ getBalances: vi.fn((locationId: string) => new Promise<InventoryBalance[]>((resolve) => pending.push({ locationId, resolve }))) });
+    render(<TransfersPage api={api} />);
+    await screen.findByLabelText(/destination location/i);
+    await waitFor(() => expect(pending).toHaveLength(2));
+    pending.find((request) => request.locationId === 'main')?.resolve([{ locationId: 'main', productId: 'pork', quantityPieces: 40 }]);
+    pending.find((request) => request.locationId === 'branch')?.resolve([{ locationId: 'branch', productId: 'pork', quantityPieces: 0 }]);
+    await screen.findByText(/available at source: 40 pc/i);
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '1' } });
+    expect(screen.getByRole('button', { name: /transfer stock/i })).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText(/source location/i), { target: { value: 'branch' } });
+    expect(screen.getByRole('button', { name: /transfer stock/i })).toBeDisabled();
+    await waitFor(() => expect(pending).toHaveLength(4));
+    pending[2].resolve([{ locationId: 'branch', productId: 'pork', quantityPieces: 20 }]);
+    pending[3].resolve([{ locationId: 'main', productId: 'pork', quantityPieces: 10 }]);
+    await screen.findByText(/available at source: 20 pc/i);
+    expect(screen.getByRole('button', { name: /transfer stock/i })).toBeEnabled();
   });
 
   it('shows count differences, requires a reason, and resets after successful submission', async () => {
@@ -116,6 +146,15 @@ describe('stock workflow pages', () => {
     await screen.findByText(/expected on hand: 66 pc/i);
     fireEvent.change(screen.getByLabelText(/counted quantity/i), { target: { value: '60' } });
     expect(screen.getByText('−₱13.27')).toBeInTheDocument();
+  });
+
+  it('rounds large count value impact in centavos with exact integer arithmetic', async () => {
+    const expensive = { ...pork, piecesPerPack: 3, purchaseCostPerPackCentavos: Number.MAX_SAFE_INTEGER };
+    const api = makeApi({ listProducts: vi.fn().mockResolvedValue([expensive]), getBalances: vi.fn().mockResolvedValue([]) });
+    render(<StockCountPage api={api} />);
+    await screen.findByRole('option', { name: 'Main Cart' });
+    fireEvent.change(screen.getByLabelText(/counted quantity/i), { target: { value: '1' } });
+    expect(screen.getByText('+₱30,023,997,515,803.30')).toBeInTheDocument();
   });
 
   it('retains replenishment values and exposes an alert after an API rejection', async () => {

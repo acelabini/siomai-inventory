@@ -7,7 +7,7 @@ import InlineNotice from '../components/ui/InlineNotice';
 import PageHeader from '../components/ui/PageHeader';
 import StatusBadge from '../components/ui/StatusBadge';
 import { getInventoryApi } from '../api';
-import { formatMoney, formatMovementTimestamp, formatQuantity, LocationSelect } from './stock-shared';
+import { formatMoney, formatMovementTimestamp, formatQuantity, LocationSelect, proratedCentavos } from './stock-shared';
 
 export default function InventoryPage({ api = getInventoryApi(), activeLocationId, onLocationChange, onNavigate }: { api?: InventoryApi; activeLocationId?: string; onLocationChange?: (locationId: string) => void; onNavigate?: (page: string) => void }) {
   const [locations, setLocations] = useState<CatalogLocation[]>([]);
@@ -44,7 +44,10 @@ export default function InventoryPage({ api = getInventoryApi(), activeLocationI
   const quantityByProduct = new Map(balances.map((balance) => [balance.productId, balance.quantityPieces]));
   const rows = products.map((product) => {
     const quantity = quantityByProduct.get(product.id) ?? 0;
-    return { product, quantity, value: Math.round(product.purchaseCostPerPackCentavos * quantity / product.piecesPerPack) };
+    let value: number | null;
+    try { value = proratedCentavos(product.purchaseCostPerPackCentavos, quantity, product.piecesPerPack); }
+    catch { value = null; }
+    return { product, quantity, value };
   }).filter(({ product, quantity }) => {
     const matchesSearch = `${product.name} ${product.sku}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
     const isLow = product.lowStockThresholdPieces > 0 && quantity <= product.lowStockThresholdPieces;
@@ -70,7 +73,7 @@ export default function InventoryPage({ api = getInventoryApi(), activeLocationI
         ? <StatusBadge tone="warning">Low stock</StatusBadge>
         : <StatusBadge tone="success">Healthy</StatusBadge> },
       { key: 'threshold', label: 'Low stock at', numeric: true, render: (row) => row.product.lowStockThresholdPieces ? `${row.product.lowStockThresholdPieces} pc` : '—' },
-      { key: 'value', label: 'Stock value', numeric: true, render: (row) => formatMoney(row.value) },
+      { key: 'value', label: 'Stock value', numeric: true, render: (row) => row.value === null ? '—' : formatMoney(row.value) },
     ]} />
     <section className="movement-panel" aria-labelledby="movement-title"><h2 id="movement-title">Recent stock movements</h2>
       {movements.length === 0 ? <p className="empty-note">No stock movements at this location.</p> : <div className="catalog-table-wrap"><table className="catalog-table" aria-label="Recent stock movements"><thead><tr><th>When</th><th>Product</th><th>Movement</th><th>Quantity</th><th>Note</th></tr></thead><tbody>

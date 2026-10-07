@@ -1,8 +1,37 @@
 import { describePieces } from '../../main/domain/quantities';
 import type { CatalogLocation, CatalogProduct } from '../../shared/schemas';
 
+const currencyFormatter = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
+const pesoIntegerFormatter = new Intl.NumberFormat('en-PH', { maximumFractionDigits: 0 });
+
 export function formatMoney(centavos: number): string {
+  if (Number.isSafeInteger(centavos)) {
+    const amount = BigInt(centavos);
+    const magnitude = amount < 0n ? -amount : amount;
+    const parts = currencyFormatter.formatToParts(amount < 0n ? -1n : 1n);
+    const wholePesos = pesoIntegerFormatter.format(magnitude / 100n);
+    const fractionalCentavos = (magnitude % 100n).toString().padStart(2, '0');
+    return parts.map((part) => part.type === 'integer' ? wholePesos
+      : part.type === 'group' ? ''
+        : part.type === 'fraction' ? fractionalCentavos : part.value).join('');
+  }
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(centavos / 100);
+}
+
+export function proratedCentavos(packCostCentavos: number, quantityPieces: number, piecesPerPack: number): number {
+  if (!Number.isSafeInteger(packCostCentavos) || packCostCentavos < 0
+    || !Number.isSafeInteger(quantityPieces) || !Number.isSafeInteger(piecesPerPack) || piecesPerPack <= 0) {
+    throw new RangeError('Stock value inputs must be safe whole numbers.');
+  }
+  const signedNumerator = BigInt(packCostCentavos) * BigInt(quantityPieces);
+  const denominator = BigInt(piecesPerPack);
+  const magnitude = signedNumerator < 0n ? -signedNumerator : signedNumerator;
+  const roundedMagnitude = (magnitude + denominator / 2n) / denominator;
+  const rounded = signedNumerator < 0n ? -roundedMagnitude : roundedMagnitude;
+  if (rounded > BigInt(Number.MAX_SAFE_INTEGER) || rounded < BigInt(Number.MIN_SAFE_INTEGER)) {
+    throw new RangeError('Stock value exceeds the safe integer range.');
+  }
+  return Number(rounded);
 }
 
 export function formatMovementTimestamp(timestamp: string): string {

@@ -15,7 +15,7 @@ const products: CatalogProduct[] = [
   { id: 'shrimp', sku: 'SHRIMP-03', name: 'Siomai Shrimp', piecesPerPack: 50, purchaseCostPerPackCentavos: 10000, sellingPricePerPieceCentavos: 350, sellingPricePerPackCentavos: 16000, lowStockThresholdPieces: 10, isActive: true },
 ];
 
-function makeApi(): InventoryApi {
+function makeApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
   return {
     getSetupState: vi.fn(), completeSetup: vi.fn(), listProducts: vi.fn().mockResolvedValue(products), saveProduct: vi.fn(), archiveProduct: vi.fn(),
     listLocations: vi.fn().mockResolvedValue([location]), saveLocation: vi.fn(), archiveLocation: vi.fn(),
@@ -23,6 +23,7 @@ function makeApi(): InventoryApi {
     getMovementHistory: vi.fn().mockResolvedValue([]), setOpeningStock: vi.fn(), recordReplenishment: vi.fn(), transferStock: vi.fn(), submitStockCount: vi.fn(),
     completeSale: vi.fn(), listSales: vi.fn(), voidSale: vi.fn(), getDashboard: vi.fn(), getSalesReport: vi.fn(), getMovementReport: vi.fn(), getValuationReport: vi.fn(), getProfitReport: vi.fn(), getDiscrepancyReport: vi.fn(), getLowStockReport: vi.fn(),
     chooseCsvImportFile: vi.fn(), previewCsvImport: vi.fn(), commitCsvImport: vi.fn(), exportReportCsv: vi.fn(), getSettings: vi.fn(), saveSettings: vi.fn(), chooseBackupDirectory: vi.fn(), createManualBackup: vi.fn(), chooseBackupFile: vi.fn(), restoreBackup: vi.fn(), requestRelaunch: vi.fn(),
+    ...overrides,
   };
 }
 
@@ -59,5 +60,14 @@ describe('inventory page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stock count' }));
     expect(onNavigate).toHaveBeenNthCalledWith(1, 'Replenish');
     expect(onNavigate).toHaveBeenNthCalledWith(2, 'Stock count');
+  });
+
+  it('rounds large stock value in centavos with exact integer arithmetic', async () => {
+    const expensiveProduct: CatalogProduct = { ...products[0], piecesPerPack: 3, purchaseCostPerPackCentavos: Number.MAX_SAFE_INTEGER };
+    const maxCentavoProduct: CatalogProduct = { ...expensiveProduct, id: 'max-centavo', sku: 'MAX-1', name: 'Max centavo', piecesPerPack: 1 };
+    const api = makeApi({ listProducts: vi.fn().mockResolvedValue([expensiveProduct, maxCentavoProduct]), getBalances: vi.fn().mockResolvedValue([{ locationId: 'main', productId: 'pork', quantityPieces: 1 }, { locationId: 'main', productId: 'max-centavo', quantityPieces: 1 }]) });
+    render(<InventoryPage api={api} />);
+    expect(await screen.findByText('₱30,023,997,515,803.30')).toBeInTheDocument();
+    expect(screen.getByText('₱90,071,992,547,409.91')).toBeInTheDocument();
   });
 });

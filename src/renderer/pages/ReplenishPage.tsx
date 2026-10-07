@@ -3,18 +3,22 @@ import type { InventoryApi } from '../../shared/contracts';
 import type { CatalogLocation, CatalogProduct, InventoryBalance } from '../../shared/schemas';
 import { toPieces } from '../../main/domain/quantities';
 import { getInventoryApi } from '../api';
-import { formatMoney, formatQuantity, LocationSelect } from './stock-shared';
+import { formatMoney, formatQuantity, LocationSelect, proratedCentavos } from './stock-shared';
 
 type Line = { productId: string; quantity: string; unit: 'piece' | 'pack' };
 const blankLine = (productId = ''): Line => ({ productId, quantity: '', unit: 'piece' });
 
 function linePreview(line: Line, products: CatalogProduct[]) {
   const product = products.find((item) => item.id === line.productId);
-  if (!product || !line.quantity || Number(line.quantity) <= 0) return { pieces: 0, cost: 0, product };
+  if (!product || !line.quantity || Number(line.quantity) <= 0) return { pieces: 0, cost: 0 as number | null, product };
+  let pieces: number;
   try {
-    const pieces = toPieces(Number(line.quantity), line.unit, product.piecesPerPack);
-    return { pieces, cost: Math.round(product.purchaseCostPerPackCentavos * pieces / product.piecesPerPack), product };
+    pieces = toPieces(Number(line.quantity), line.unit, product.piecesPerPack);
   } catch { return { pieces: 0, cost: 0, product }; }
+  let cost: number | null;
+  try { cost = proratedCentavos(product.purchaseCostPerPackCentavos, pieces, product.piecesPerPack); }
+  catch { cost = null; }
+  return { pieces, cost, product };
 }
 
 export default function ReplenishPage({ api = getInventoryApi(), activeLocationId, onLocationChange }: { api?: InventoryApi; activeLocationId?: string; onLocationChange?: (locationId: string) => void }) {
@@ -48,7 +52,7 @@ export default function ReplenishPage({ api = getInventoryApi(), activeLocationI
   }, [api, selectedLocationId]);
 
   const previews = useMemo(() => lines.map((line) => linePreview(line, products)), [lines, products]);
-  const totalCost = previews.reduce((sum, preview) => sum + preview.cost, 0);
+  const totalCost = previews.reduce<number | null>((sum, preview) => sum === null || preview.cost === null ? null : sum + preview.cost, 0);
   const valid = lines.every((line, index) => line.productId && previews[index].pieces > 0) && new Set(lines.map((line) => line.productId)).size === lines.length;
 
   function updateLine(index: number, changes: Partial<Line>) {
@@ -88,7 +92,7 @@ export default function ReplenishPage({ api = getInventoryApi(), activeLocationI
         {error && <p role="alert" className="field-error">{error}</p>}{success && <p role="status" className="success-note">{success}</p>}
         <button className="primary-button" type="submit" disabled={!valid || !selectedLocationId}>Record replenishment</button>
       </form>
-      <aside className="workflow-summary" aria-label="Replenishment summary"><p className="empty-kicker">CONFIRMATION</p><h2>Stock received</h2><dl><div><dt>Products</dt><dd>{lines.filter((line, index) => previews[index].pieces > 0).length}</dd></div><div><dt>Total pieces</dt><dd>{previews.reduce((sum, preview) => sum + preview.pieces, 0)}</dd></div><div><dt>Total cost</dt><dd>{formatMoney(totalCost)}</dd></div></dl>
+      <aside className="workflow-summary" aria-label="Replenishment summary"><p className="empty-kicker">CONFIRMATION</p><h2>Stock received</h2><dl><div><dt>Products</dt><dd>{lines.filter((line, index) => previews[index].pieces > 0).length}</dd></div><div><dt>Total pieces</dt><dd>{previews.reduce((sum, preview) => sum + preview.pieces, 0)}</dd></div><div><dt>Total cost</dt><dd>{totalCost === null || !Number.isSafeInteger(totalCost) ? '—' : formatMoney(totalCost)}</dd></div></dl>
         <h3 className="summary-subheading">On hand after replenishment</h3>
         <ul className="balance-preview-list">{lines.map((line, index) => {
           const preview = previews[index];
