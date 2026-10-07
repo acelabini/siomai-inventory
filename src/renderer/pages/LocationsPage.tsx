@@ -64,7 +64,7 @@ export default function LocationsPage({ api = getInventoryApi(), activeLocationI
     if (!archivingLocation) return;
     try {
       await api.archiveLocation(archivingLocation.id);
-      setArchivingLocation(null); await refresh(); setMessage('Location archived. Its stock and transaction history will be kept.');
+      setArchivingLocation(null); setError(''); await refresh(); setMessage('Location archived. Its stock and transaction history will be kept.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Location could not be archived.'); }
   }
 
@@ -84,7 +84,7 @@ export default function LocationsPage({ api = getInventoryApi(), activeLocationI
         const isCurrent = location.id === activeLocationId;
         return <article className="location-summary-card" key={location.id}>
           <div className="location-summary-heading"><div><h2 title={location.name}>{location.name}</h2>{isCurrent && <StatusBadge tone="success">Current location</StatusBadge>}</div>
-            <div className="catalog-row-actions"><Button variant="ghost" aria-label={`Edit ${location.name}`} onClick={() => { setEditingId(location.id); setName(location.name); setError(''); setMessage(''); setFormOpen(true); }}>Edit</Button><Button variant="danger" icon="archive" aria-label={`Archive ${location.name}`} onClick={() => setArchivingLocation(location)}>Archive</Button></div>
+            <div className="catalog-row-actions"><Button variant="ghost" aria-label={`Edit ${location.name}`} onClick={() => { setEditingId(location.id); setName(location.name); setError(''); setMessage(''); setFormOpen(true); }}>Edit</Button><Button variant="danger" icon="archive" aria-label={`Archive ${location.name}`} onClick={() => { setError(''); setMessage(''); setArchivingLocation(location); }}>Archive</Button></div>
           </div>
           <dl className="location-summary-metrics"><div><dt>Products in stock</dt><dd>{productCount} {productCount === 1 ? 'product' : 'products'}</dd></div><div><dt>Total pieces</dt><dd>{totalPieces} pc</dd></div></dl>
         </article>;

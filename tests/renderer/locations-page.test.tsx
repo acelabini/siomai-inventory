@@ -86,6 +86,25 @@ describe('LocationsPage', () => {
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Archive location' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(archiveLocation).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears a prior archive error when opening another location confirmation', async () => {
+    const secondLocation = { id: 'south', name: 'South Cart', isActive: true };
+    const archiveLocation = vi.fn().mockRejectedValueOnce(new Error('At least one active location must remain.')).mockResolvedValue(undefined);
+    const api = makeApi({ listLocations: vi.fn().mockResolvedValue([locations[0], secondLocation]), archiveLocation });
+    render(<LocationsPage api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive Main Market Cart' }));
+    let dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive location' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('At least one active location must remain.');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archive South Cart' }));
+    dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(archiveLocation).toHaveBeenCalledOnce();
   });
 });

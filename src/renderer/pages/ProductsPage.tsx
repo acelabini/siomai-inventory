@@ -113,7 +113,7 @@ export default function ProductsPage({ api = getInventoryApi() }: Props) {
     if (!archivingProduct) return;
     try {
       await api.archiveProduct(archivingProduct.id);
-      setArchivingProduct(null); await refresh(); setMessage('Product archived. Existing stock and sales history will be kept.');
+      setArchivingProduct(null); setError(''); await refresh(); setMessage('Product archived. Existing stock and sales history will be kept.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Product could not be archived.'); }
   }
 
@@ -124,7 +124,7 @@ export default function ProductsPage({ api = getInventoryApi() }: Props) {
     { key: 'cost', label: 'Purchase cost / pack', numeric: true, render: (product: CatalogProduct) => formatMoney(product.purchaseCostPerPackCentavos) },
     { key: 'price', label: 'Selling price / piece', numeric: true, render: (product: CatalogProduct) => product.sellingPricePerPieceCentavos === 0 && product.sellingPricePerPackCentavos === 0 ? <span className="price-warning">Set price before sale</span> : formatMoney(product.sellingPricePerPieceCentavos) },
     { key: 'actions', label: 'Actions', render: (product: CatalogProduct) => product.isActive
-      ? <div className="catalog-row-actions"><Button variant="ghost" onClick={() => edit(product)}>Edit</Button><Button variant="danger" icon="archive" aria-label={`Archive ${product.name}`} onClick={() => setArchivingProduct(product)}>Archive</Button></div>
+      ? <div className="catalog-row-actions"><Button variant="ghost" onClick={() => edit(product)}>Edit</Button><Button variant="danger" icon="archive" aria-label={`Archive ${product.name}`} onClick={() => { setError(''); setMessage(''); setArchivingProduct(product); }}>Archive</Button></div>
       : <span className="archived-label">Archived</span> },
   ];
 

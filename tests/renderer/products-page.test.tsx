@@ -88,7 +88,26 @@ describe('ProductsPage', () => {
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Archive product' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(archiveProduct).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears a prior archive error when opening another product confirmation', async () => {
+    const secondProduct = { ...product, id: 'chicken', sku: 'CHICKEN', name: 'Siomai Chicken' };
+    const archiveProduct = vi.fn().mockRejectedValueOnce(new Error('The product is in use.')).mockResolvedValue(undefined);
+    const api = makeApi({ listProducts: vi.fn().mockResolvedValue([product, secondProduct]), archiveProduct });
+    render(<ProductsPage api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive Siomai Pork' }));
+    let dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive product' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('The product is in use.');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archive Siomai Chicken' }));
+    dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(archiveProduct).toHaveBeenCalledOnce();
   });
 
   it('preloads and preserves the configured piece threshold when editing a product', async () => {
