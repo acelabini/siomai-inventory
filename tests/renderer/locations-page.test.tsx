@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryApi } from '../../src/shared/contracts';
@@ -63,8 +63,29 @@ describe('LocationsPage', () => {
     const name = await screen.findByRole('heading', { name: longName });
     expect(name).toHaveAttribute('title', longName);
     fireEvent.click(screen.getByRole('button', { name: `Archive ${longName}` }));
-    expect(await screen.findByRole('dialog')).toHaveTextContent(/stock and transaction history will be kept/i);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(/at least one other active location remains/i);
+    expect(dialog).toHaveTextContent(/history will be kept/i);
+    expect(dialog).not.toHaveTextContent(/related records may not be archived/i);
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
     expect(api.archiveLocation).not.toHaveBeenCalled();
+  });
+
+  it('keeps location archive failures visible in the dialog and allows retry or cancellation', async () => {
+    const archiveLocation = vi.fn().mockRejectedValueOnce(new Error('At least one active location must remain.')).mockResolvedValue(undefined);
+    const api = makeApi({ archiveLocation });
+    render(<LocationsPage api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive Main Market Cart' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive location' }));
+
+    const failure = await within(dialog).findByRole('alert');
+    expect(failure).toHaveTextContent('At least one active location must remain.');
+    expect(failure).toHaveTextContent(/you can retry or cancel/i);
+    expect(within(dialog).getByRole('button', { name: 'Archive location' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive location' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(archiveLocation).toHaveBeenCalledTimes(2);
   });
 });

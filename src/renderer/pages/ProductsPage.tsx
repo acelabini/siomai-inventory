@@ -130,7 +130,7 @@ export default function ProductsPage({ api = getInventoryApi() }: Props) {
 
   return <main className="catalog-page redesigned-catalog-page" aria-labelledby="products-title">
     <PageHeader eyebrow="Catalog" title="Products" titleId="products-title" description="Manage the items and prices used across sales and stock records." actions={<Button variant="primary" icon="plus" onClick={addProduct}>Add product</Button>} />
-    {error && !formOpen && <InlineNotice tone="danger" title="Product action failed">{error}</InlineNotice>}
+    {error && !formOpen && !archivingProduct && <InlineNotice tone="danger" title="Product action failed">{error}</InlineNotice>}
     {message && <InlineNotice tone="success" title={message} />}
     {formOpen && <Panel title={editingId ? 'Edit product' : 'Add a product'} className="catalog-editor">
       <form className="catalog-editor-grid" onSubmit={(event) => void save(event)}>
@@ -153,6 +153,7 @@ export default function ProductsPage({ api = getInventoryApi() }: Props) {
       {products.length === 0 && <EmptyState icon="products" title="No products yet" description="Add the products your cart sells to start tracking stock and sales." actions={<Button variant="primary" icon="plus" onClick={addProduct}>Add product</Button>} />}
     </Panel>
     <ConfirmDialog open={Boolean(archivingProduct)} title={`Archive ${archivingProduct?.name ?? 'product'}?`} description="The product will no longer appear in active lists. Existing stock, sale, and movement history will be kept." confirmLabel="Archive product" onConfirm={() => void archive()} onCancel={() => setArchivingProduct(null)}>
+      {error && archivingProduct && <p className="field-error dialog-error" role="alert" tabIndex={0}>{error} You can retry or cancel.</p>}
       {archivingProduct && <p className="dialog-long-name" title={archivingProduct.name}>{archivingProduct.name}</p>}
     </ConfirmDialog>
   </main>;

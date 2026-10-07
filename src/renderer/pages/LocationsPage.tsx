@@ -70,7 +70,7 @@ export default function LocationsPage({ api = getInventoryApi(), activeLocationI
 
   return <main className="catalog-page redesigned-catalog-page" aria-labelledby="locations-title">
     <PageHeader eyebrow="Catalog" title="Locations" titleId="locations-title" description="Review the stock held at each cart or storage point." actions={<Button variant="primary" icon="plus" onClick={addLocation}>Add location</Button>} />
-    {error && !formOpen && <InlineNotice tone="danger" title="Location action failed">{error}</InlineNotice>}
+    {error && !formOpen && !archivingLocation && <InlineNotice tone="danger" title="Location action failed">{error}</InlineNotice>}
     {message && <InlineNotice tone="success" title={message} />}
     {formOpen && <Panel title={editingId ? 'Edit location' : 'Add a location'} className="location-editor">
       <form onSubmit={(event) => void save(event)}>
@@ -90,7 +90,8 @@ export default function LocationsPage({ api = getInventoryApi(), activeLocationI
         </article>;
       })}</div> : <EmptyState icon="locations" title="No active locations" description="Add a location to keep stock balances organized." actions={<Button variant="primary" icon="plus" onClick={addLocation}>Add location</Button>} />}
     </Panel>
-    <ConfirmDialog open={Boolean(archivingLocation)} title={`Archive ${archivingLocation?.name ?? 'location'}?`} description="This location will leave active lists. Its stock and transaction history will be kept. Locations with related records may not be archived." confirmLabel="Archive location" onConfirm={() => void archive()} onCancel={() => setArchivingLocation(null)}>
+    <ConfirmDialog open={Boolean(archivingLocation)} title={`Archive ${archivingLocation?.name ?? 'location'}?`} description="Archive this location only if at least one other active location remains. Its stock and transaction history will be kept." confirmLabel="Archive location" onConfirm={() => void archive()} onCancel={() => setArchivingLocation(null)}>
+      {error && archivingLocation && <p className="field-error dialog-error" role="alert" tabIndex={0}>{error} You can retry or cancel.</p>}
       {archivingLocation && <p className="dialog-long-name" title={archivingLocation.name}>{archivingLocation.name}</p>}
     </ConfirmDialog>
   </main>;

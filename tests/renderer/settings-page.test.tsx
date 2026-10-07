@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryApi } from '../../src/shared/contracts';
@@ -122,12 +122,20 @@ describe('SettingsPage', () => {
     expect(services.requestRelaunch).not.toHaveBeenCalled();
   });
 
-  it('shows restore validation failures and does not request relaunch', async () => {
-    const services = settingsApi({ restoreBackup: vi.fn().mockRejectedValue(new Error('This backup is not compatible with this version.')) });
+  it('keeps restore failures visible in the dialog and allows retry or cancellation', async () => {
+    const restoreBackup = vi.fn().mockRejectedValueOnce(new Error('This backup is not compatible with this version.')).mockResolvedValue(true);
+    const services = settingsApi({ restoreBackup });
     render(<SettingsPage api={services} onNavigate={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: /restore from backup/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /^restore backup$/i }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/not compatible/i);
-    expect(services.requestRelaunch).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /^restore backup$/i }));
+    const failure = await within(dialog).findByRole('alert');
+    expect(failure).toHaveTextContent(/not compatible/i);
+    expect(failure).toHaveTextContent(/you can retry the restore or cancel/i);
+    expect(within(dialog).getByRole('button', { name: /^restore backup$/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /^restore backup$/i }));
+    await waitFor(() => expect(services.requestRelaunch).toHaveBeenCalledOnce());
+    expect(restoreBackup).toHaveBeenCalledTimes(2);
   });
 });

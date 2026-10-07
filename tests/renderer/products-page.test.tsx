@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryApi } from '../../src/shared/contracts';
@@ -71,6 +71,24 @@ describe('ProductsPage', () => {
     expect(await screen.findByRole('dialog', { name: new RegExp(longName) })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
     expect(api.archiveProduct).not.toHaveBeenCalled();
+  });
+
+  it('keeps archive failures visible in the dialog and allows retry or cancellation', async () => {
+    const archiveProduct = vi.fn().mockRejectedValueOnce(new Error('Product has related stock records.')).mockResolvedValue(undefined);
+    const api = makeApi({ archiveProduct });
+    render(<ProductsPage api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive Siomai Pork' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive product' }));
+
+    const failure = await within(dialog).findByRole('alert');
+    expect(failure).toHaveTextContent('Product has related stock records.');
+    expect(failure).toHaveTextContent(/you can retry or cancel/i);
+    expect(within(dialog).getByRole('button', { name: 'Archive product' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive product' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(archiveProduct).toHaveBeenCalledTimes(2);
   });
 
   it('preloads and preserves the configured piece threshold when editing a product', async () => {

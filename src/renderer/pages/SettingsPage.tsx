@@ -81,7 +81,7 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
 
   return <main className="catalog-page redesigned-catalog-page settings-page" aria-labelledby="settings-title">
     <PageHeader eyebrow="Business setup" title="Settings" titleId="settings-title" description="Manage your business profile, local backups, and imported records." />
-    {error && <InlineNotice tone="danger" title="Settings action failed">{error}</InlineNotice>}
+    {error && !selectedBackup && <InlineNotice tone="danger" title="Settings action failed">{error}</InlineNotice>}
     {startupWarning && <InlineNotice tone="warning" role="alert" title="Startup backup needs attention" action={<Button variant="secondary" disabled={busy} onClick={() => void createManualBackup()}>Create backup now</Button>}>{startupWarning}<span className="startup-recovery-copy">Create a manual backup to protect current data.</span></InlineNotice>}
     {message && <InlineNotice tone="success" title={message} />}
     <div className="settings-sections">
@@ -110,6 +110,7 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
       </Panel>
     </div>
     <ConfirmDialog open={Boolean(selectedBackup)} title={`Restore ${selectedBackup?.fileName ?? 'backup'}?`} description="Current data will be protected with a safety backup before the selected database is restored." confirmLabel={busy ? 'Restoring…' : 'Restore backup'} busy={busy} onConfirm={() => void restore()} onCancel={() => { setSelectedBackup(null); setError(''); }}>
+      {error && selectedBackup && <p className="field-error dialog-error" role="alert" tabIndex={0}>{error} You can retry the restore or cancel to leave existing data in place.</p>}
       {selectedBackup && <p className="restore-filename" title={selectedBackup.fileName}>{selectedBackup.fileName}</p>}
     </ConfirmDialog>
   </main>;
