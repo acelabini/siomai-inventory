@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryApi } from '../../src/shared/contracts';
@@ -43,7 +43,7 @@ describe('dashboard and reports', () => {
     expect(screen.getByRole('region', { name: /daily activity summary/i })).toHaveTextContent(/not a full stock reconciliation/i);
     expect(screen.getByRole('columnheader', { name: /opening/i })).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /siomai pork/i })).toHaveTextContent('146');
-    expect(screen.getByLabelText(/low stock/i)).toHaveTextContent('⚠ Low stock');
+    expect(within(screen.getByRole('row', { name: /siomai pork/i })).getByLabelText(/low stock/i)).toHaveTextContent('⚠ Low stock');
   });
 
   it('offers useful actions when there are no inventory rows', async () => {
