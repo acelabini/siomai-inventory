@@ -75,6 +75,10 @@ describe('sale composer', () => {
     expect(quantities).toHaveLength(2);
     expect(quantities[0]).toHaveAccessibleName('Line 1: Quantity for Siomai Pork');
     expect(quantities[1]).toHaveAccessibleName('Line 2: Quantity for Siomai Pork');
+    const units = screen.getAllByLabelText(/unit for siomai pork/i);
+    expect(units).toHaveLength(2);
+    expect(units[0]).toHaveAccessibleName('Line 1: Unit for Siomai Pork');
+    expect(units[1]).toHaveAccessibleName('Line 2: Unit for Siomai Pork');
     expect(screen.getByRole('button', { name: 'Remove Siomai Pork, line 2' })).toBeInTheDocument();
     fireEvent.change(quantities[1], { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText('Amount tendered'), { target: { value: '34' } });

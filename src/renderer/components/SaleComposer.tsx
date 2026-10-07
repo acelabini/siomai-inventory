@@ -105,7 +105,7 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
           const preview = previews[index]; const product = preview.product; const available = product ? availability.get(product.id) ?? 0 : 0;
           return <fieldset className="stock-line sale-line" key={line.id}><legend>{product?.name ?? 'Product'}, line {index + 1}</legend>
             <div className="quantity-row"><label className="form-field">Quantity for {product?.name}, line {index + 1}<input aria-label={`Line ${index + 1}: Quantity for ${product?.name}`} type="number" min="0.01" step="any" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></label>
-              <label className="form-field">Unit<select aria-label={`Unit for ${product?.name}`} value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value as Line['unit'] })}><option value="piece">Piece</option><option value="pack">Pack</option></select></label></div>
+              <label className="form-field">Unit<select aria-label={`Line ${index + 1}: Unit for ${product?.name}`} value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value as Line['unit'] })}><option value="piece">Piece</option><option value="pack">Pack</option></select></label></div>
             <p className="availability-note">Available: {formatQuantity(available, product?.piecesPerPack ?? 1)}</p>
             {preview.error && <p className="field-error">{preview.error}</p>}
             {product && ((line.unit === 'piece' ? product.sellingPricePerPieceCentavos : product.sellingPricePerPackCentavos) === 0) && <p className="price-warning">Set a selling price before this product can be sold.</p>}
