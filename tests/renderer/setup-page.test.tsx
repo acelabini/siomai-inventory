@@ -40,6 +40,22 @@ describe('SetupPage', () => {
     expect(screen.getByLabelText(/siomai pork/i)).toBeChecked();
   });
 
+  it('completes required setup before taking the operator to CSV import', async () => {
+    const completeSetup = vi.fn().mockResolvedValue({ complete: true, businessName: 'Cart ni Ate', locationId: 'location-1' });
+    const onComplete = vi.fn();
+    render(<SetupPage api={setupApi(completeSetup)} onComplete={onComplete} />);
+    await screen.findByRole('heading', { name: /set up your business/i });
+    fireEvent.change(screen.getByLabelText(/business name/i), { target: { value: 'Cart ni Ate' } });
+    fireEvent.change(screen.getByLabelText(/location name/i), { target: { value: 'Main Cart' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    fireEvent.click(await screen.findByRole('radio', { name: /import products or stock from csv/i }));
+    fireEvent.click(screen.getByRole('button', { name: /complete setup and import csv/i }));
+    await waitFor(() => expect(completeSetup).toHaveBeenCalledWith({
+      businessName: 'Cart ni Ate', locationName: 'Main Cart', sampleProductIds: [], openingStock: [],
+    }));
+    expect(onComplete).toHaveBeenCalledWith('Import');
+  });
+
   it('rejects negative opening stock and submits trimmed names and normalized values', async () => {
     const completeSetup = vi.fn().mockResolvedValue({ complete: true, businessName: 'Cart ni Ate', locationId: 'location-1' });
     const onComplete = vi.fn();

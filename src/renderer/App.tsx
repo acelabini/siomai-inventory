@@ -48,7 +48,7 @@ export default function App({ api = getInventoryApi() }: { api?: InventoryApi } 
   }, [api, setupComplete]);
 
   if (setupComplete === null) return <main className="setup-page"><p role="status">Loading local ledger…</p></main>;
-  if (!setupComplete) return <SetupPage api={api} onComplete={() => setSetupComplete(true)} />;
+  if (!setupComplete) return <SetupPage api={api} onComplete={(nextView) => { setSetupComplete(true); if (nextView) setView(nextView); }} />;
 
   let page;
   if (view === 'Sales') page = <SalesPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} />;

@@ -40,6 +40,7 @@ describe('dashboard and reports', () => {
     expect(screen.getByText('Discrepancies')).toBeInTheDocument();
     expect(screen.getByText('Low stock')).toBeInTheDocument();
     expect(screen.getByRole('table', { name: /daily inventory ledger/i })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /daily activity summary/i })).toHaveTextContent(/not a full stock reconciliation/i);
     expect(screen.getByRole('columnheader', { name: /opening/i })).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /siomai pork/i })).toHaveTextContent('146');
     expect(screen.getByLabelText(/low stock/i)).toHaveTextContent('⚠ Low stock');
@@ -47,9 +48,11 @@ describe('dashboard and reports', () => {
 
   it('offers useful actions when there are no inventory rows', async () => {
     const api = makeApi({ getDashboard: vi.fn().mockResolvedValue({ locationId: 'main', date: '2026-10-07', metrics: { revenueCentavos: 0, costCentavos: 0, grossProfitCentavos: 0, stockValueCentavos: 0, discrepancyCount: 0, lowStockCount: 0 }, products: [] }) });
-    render(<DashboardPage api={api} onNavigate={vi.fn()} />);
+    const onNavigate = vi.fn();
+    render(<DashboardPage api={api} onNavigate={onNavigate} />);
     expect(await screen.findByText(/no stock recorded/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /record opening stock/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /reconcile stock count/i }));
+    expect(onNavigate).toHaveBeenCalledWith('Stock count');
     expect(screen.getByRole('button', { name: /add products/i })).toBeInTheDocument();
   });
 
@@ -85,6 +88,22 @@ describe('dashboard and reports', () => {
     expect(screen.getByRole('main')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
     await waitFor(() => expect(api.getDashboard).toHaveBeenLastCalledWith({ locationId: 'main', date: '2026-10-06' }));
+  });
+
+  it('finishes first-run business and location setup before opening the import page', async () => {
+    const api = makeApi({
+      getSetupState: vi.fn().mockResolvedValue({ complete: false, businessName: null, locations: [], sampleProducts: [] }),
+      completeSetup: vi.fn().mockResolvedValue({ complete: true, businessName: 'Cart', locationId: 'main' }),
+    });
+    render(<App api={api} />);
+    await screen.findByRole('heading', { name: /set up your business/i });
+    fireEvent.change(screen.getByLabelText(/business name/i), { target: { value: 'Cart' } });
+    fireEvent.change(screen.getByLabelText(/location name/i), { target: { value: 'Main Cart' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    fireEvent.click(await screen.findByRole('radio', { name: /import products or stock from csv/i }));
+    fireEvent.click(screen.getByRole('button', { name: /complete setup and import csv/i }));
+    expect(await screen.findByRole('heading', { name: 'Import data' })).toBeInTheDocument();
+    expect(api.completeSetup).toHaveBeenCalledWith({ businessName: 'Cart', locationName: 'Main Cart', sampleProductIds: [], openingStock: [] });
   });
 
   it('shows valuation, discrepancy, and low-stock detail rows in reports', async () => {

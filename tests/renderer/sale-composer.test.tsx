@@ -45,6 +45,21 @@ describe('sale composer', () => {
     expect(screen.getAllByText('₱25.00')).toHaveLength(2);
   });
 
+  it('rounds fractional pack previews with the same exact centavo arithmetic as checkout', async () => {
+    const product = { ...pork, piecesPerPack: 100, sellingPricePerPackCentavos: 50 };
+    const api = makeApi({ listProducts: vi.fn().mockResolvedValue([product]), getBalances: vi.fn().mockResolvedValue([{ locationId: 'main', productId: 'pork', quantityPieces: 100 }]) });
+    render(<SaleComposer api={api} />);
+    fireEvent.change(await screen.findByLabelText(/find a product/i), { target: { value: 'pork' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Siomai Pork PORK' }));
+    await waitForAvailability('1 pack');
+    fireEvent.change(screen.getByLabelText(/unit for siomai pork/i), { target: { value: 'pack' } });
+    fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '0.29' } });
+    expect(screen.getAllByText('₱0.15')).toHaveLength(2);
+    fireEvent.change(screen.getByLabelText('Amount tendered'), { target: { value: '0.15' } });
+    fireEvent.click(screen.getByRole('button', { name: /complete sale/i }));
+    await waitFor(() => expect(api.completeSale).toHaveBeenCalledWith(expect.objectContaining({ lines: [{ productId: 'pork', quantity: 0.29, unit: 'pack' }] })));
+  });
+
   it('keeps separate source entries when one product is added in pack and piece units', async () => {
     const api = makeApi();
     render(<SaleComposer api={api} />);
@@ -58,6 +73,9 @@ describe('sale composer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Siomai Pork PORK' }));
     const quantities = await screen.findAllByLabelText(/quantity for siomai pork/i);
     expect(quantities).toHaveLength(2);
+    expect(quantities[0]).toHaveAccessibleName('Line 1: Quantity for Siomai Pork');
+    expect(quantities[1]).toHaveAccessibleName('Line 2: Quantity for Siomai Pork');
+    expect(screen.getByRole('button', { name: 'Remove Siomai Pork, line 2' })).toBeInTheDocument();
     fireEvent.change(quantities[1], { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText('Amount tendered'), { target: { value: '34' } });
     fireEvent.click(screen.getByRole('button', { name: /complete sale/i }));
@@ -119,5 +137,17 @@ describe('sale composer', () => {
     fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'Entered twice' } });
     fireEvent.click(screen.getByRole('button', { name: /confirm void/i }));
     await waitFor(() => expect(onVoid).toHaveBeenCalledWith('Entered twice'));
+  });
+
+  it('renders repeated source sale lines as separate receipt rows', () => {
+    const receipt: SaleReceipt = { id: 'sale-1', locationId: 'main', businessAt: '2026-10-06 12:00:00', totalCentavos: 1200, paymentCentavos: 1300, changeCentavos: 100, status: 'completed', note: null, lines: [
+      { productId: 'pork', productName: 'Siomai Pork', quantityPieces: 10, enteredUnit: 'pack', enteredQuantity: '1', unitSellingPriceCentavos: 900, unitCostCentavos: 1000, lineRevenueCentavos: 900, lineCostCentavos: 1000, balancePieces: 15 },
+      { productId: 'pork', productName: 'Siomai Pork', quantityPieces: 1, enteredUnit: 'piece', enteredQuantity: '1', unitSellingPriceCentavos: 300, unitCostCentavos: 1000, lineRevenueCentavos: 300, lineCostCentavos: 100, balancePieces: 15 },
+    ] };
+    render(<SaleReceiptView receipt={receipt} onVoid={vi.fn()} />);
+    const rows = screen.getAllByRole('row');
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toHaveTextContent('1 pack');
+    expect(rows[2]).toHaveTextContent('1 piece');
   });
 });

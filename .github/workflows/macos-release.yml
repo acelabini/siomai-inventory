@@ -130,6 +130,8 @@ jobs:
           FINAL_DMG="$GITHUB_WORKSPACE/out/release/Siomai-Inventory-${GITHUB_REF_NAME}-universal.dmg"
           rm -f "$FINAL_DMG"
           hdiutil create -volname 'Siomai Inventory' -srcfolder "$DMG_STAGING_DIR" -ov -format UDZO "$FINAL_DMG"
+          codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$FINAL_DMG"
+          codesign --verify --strict --verbose=2 "$FINAL_DMG"
           echo "RELEASE_DMG_PATH=$FINAL_DMG" >> "$GITHUB_ENV"
 
       - name: Notarize and verify the final DMG and app
@@ -144,6 +146,7 @@ jobs:
             exit 1
           fi
           xcrun stapler staple "$FINAL_DMG"
+          codesign --verify --strict --verbose=2 "$FINAL_DMG"
           xcrun stapler validate "$FINAL_DMG"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           spctl --assess --type execute --verbose=4 "$APP_PATH"

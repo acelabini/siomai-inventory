@@ -57,6 +57,23 @@ describe('ImportService', () => {
     } finally { cleanup(); }
   });
 
+  it('rejects normalized duplicate product names within the same file before commit', () => {
+    const { catalog, service, cleanup } = makeService();
+    try {
+      const csv = 'SKU,Name,Pieces per pack,Purchase cost (PHP),Piece price (PHP),Pack price (PHP)\nFIRST,Product Name,10,10,1,9\nSECOND,  product   name  ,10,10,1,9';
+      const locationId = catalog.listLocations()[0]!.id;
+      const preview = service.preview({ csv, kind: 'products', locationId });
+      expect(preview.errors).toEqual(expect.arrayContaining([
+        expect.objectContaining({ row: 2, message: expect.stringMatching(/duplicate.*name/i) }),
+        expect.objectContaining({ row: 3, message: expect.stringMatching(/duplicate.*name/i) }),
+      ]));
+      expect(preview.invalidRows).toBe(2);
+      expect(preview.validRows).toBe(0);
+      expect(() => service.commit({ csv, kind: 'products', locationId, token: preview.token, contentHash: preview.contentHash })).toThrow(/invalid rows/i);
+      expect(catalog.listProducts()).toHaveLength(0);
+    } finally { cleanup(); }
+  });
+
   it('counts malformed CSV data rows as invalid row issues, not file issues', () => {
     const { service, cleanup } = makeService();
     try {

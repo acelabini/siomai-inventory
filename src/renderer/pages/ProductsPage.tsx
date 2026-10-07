@@ -15,6 +15,7 @@ export default function ProductsPage({ api = getInventoryApi() }: Props) {
   const [purchaseCost, setPurchaseCost] = useState('0');
   const [piecePrice, setPiecePrice] = useState('0');
   const [packPrice, setPackPrice] = useState('0');
+  const [lowStockThresholdPieces, setLowStockThresholdPieces] = useState('0');
 
   async function refresh() { setProducts(await api.listProducts()); }
   useEffect(() => { void refresh(); }, [api]);
@@ -22,6 +23,7 @@ export default function ProductsPage({ api = getInventoryApi() }: Props) {
   function resetForm() {
     setEditingId(undefined); setName(''); setSku(''); setPiecesPerPack('1');
     setPurchaseCost('0'); setPiecePrice('0'); setPackPrice('0');
+    setLowStockThresholdPieces('0');
   }
 
   function edit(product: CatalogProduct) {
@@ -30,17 +32,23 @@ export default function ProductsPage({ api = getInventoryApi() }: Props) {
     setPurchaseCost(String(product.purchaseCostPerPackCentavos));
     setPiecePrice(String(product.sellingPricePerPieceCentavos));
     setPackPrice(String(product.sellingPricePerPackCentavos));
+    setLowStockThresholdPieces(String(product.lowStockThresholdPieces));
   }
 
   async function save(event: FormEvent) {
     event.preventDefault(); setError('');
+    const threshold = Number(lowStockThresholdPieces);
+    if (!Number.isSafeInteger(threshold) || threshold < 0) {
+      setError('Low-stock threshold must be a nonnegative whole number of pieces.');
+      return;
+    }
     try {
       await api.saveProduct({
         ...(editingId ? { id: editingId } : {}),
         name, sku, piecesPerPack: Number(piecesPerPack),
         purchaseCostPerPackCentavos: Number(purchaseCost),
         sellingPricePerPieceCentavos: Number(piecePrice),
-        sellingPricePerPackCentavos: Number(packPrice), lowStockThresholdPieces: 0,
+        sellingPricePerPackCentavos: Number(packPrice), lowStockThresholdPieces: threshold,
       });
       resetForm(); await refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Product could not be saved.'); }
@@ -63,6 +71,7 @@ export default function ProductsPage({ api = getInventoryApi() }: Props) {
         <label className="form-field">Purchase cost per pack (centavos)<input type="number" min="0" step="1" value={purchaseCost} onChange={(event) => setPurchaseCost(event.target.value)} required /></label>
         <label className="form-field">Selling price per piece (centavos)<input type="number" min="0" step="1" value={piecePrice} onChange={(event) => setPiecePrice(event.target.value)} required /></label>
         <label className="form-field">Selling price per pack (centavos)<input type="number" min="0" step="1" value={packPrice} onChange={(event) => setPackPrice(event.target.value)} required /></label>
+        <label className="form-field">Low-stock threshold (pieces)<input aria-label="Low-stock threshold (pieces)" type="number" min="0" step="1" value={lowStockThresholdPieces} onChange={(event) => setLowStockThresholdPieces(event.target.value)} required /></label>
         {error && <p role="alert" className="field-error">{error}</p>}
         <div className="form-actions"><button className="primary-button" type="submit">Save product</button>{editingId && <button className="secondary-button" type="button" onClick={resetForm}>Cancel</button>}</div>
       </form>

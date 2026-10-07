@@ -37,7 +37,8 @@ export default function DashboardPage({ api = getInventoryApi(), onNavigate = ()
         <label className="form-field compact-field">Business date<input aria-label="Dashboard business date" type="date" value={selectedDate} onChange={(event) => updateDate(event.target.value)} /></label>
       </div>
     </div>
-    <section className="ledger-ribbon" aria-label="Daily stock ledger ribbon">
+    <section className="ledger-ribbon" aria-label="Daily activity summary">
+      <span className="table-subtitle">Activity summary, not a full stock reconciliation. Transfers, count adjustments, and voided-sale restocks are not shown here.</span>
       <span>Opening <strong>{report?.products.reduce((sum, row) => sum + row.openingPieces, 0) ?? '—'} pc</strong></span><span aria-hidden="true">→</span>
       <span>Replenished <strong>{report?.products.reduce((sum, row) => sum + row.replenishedPieces, 0) ?? '—'} pc</strong></span><span aria-hidden="true">→</span>
       <span>Sold <strong>{report?.products.reduce((sum, row) => sum + row.soldPieces, 0) ?? '—'} pc</strong></span><span aria-hidden="true">→</span>
@@ -59,7 +60,7 @@ export default function DashboardPage({ api = getInventoryApi(), onNavigate = ()
         { key: 'sold', label: 'Sold', numeric: true, render: (row) => row.soldPieces },
         { key: 'hand', label: 'On hand', numeric: true, render: (row) => <>{row.remainingPieces}{row.isLowStock && <span className="low-stock-tag" aria-label="Low stock">⚠ Low stock</span>}</> },
         { key: 'value', label: 'Value', numeric: true, render: (row) => peso(row.stockValueCentavos) },
-      ]} empty={<div className="dashboard-empty"><strong>No stock recorded for this date.</strong><span>Start with opening quantities or add your product list.</span><div><button type="button" className="secondary-button" onClick={() => onNavigate('Stock count')}>Record opening stock</button><button type="button" className="primary-button" onClick={() => onNavigate('Products')}>Add products</button></div></div>} />
+      ]} empty={<div className="dashboard-empty"><strong>No stock recorded for this date.</strong><span>Reconcile physical stock against the current records, or add your product list.</span><div><button type="button" className="secondary-button" onClick={() => onNavigate('Stock count')}>Reconcile stock count</button><button type="button" className="primary-button" onClick={() => onNavigate('Products')}>Add products</button></div></div>} />
     </>}
   </section>;
 }

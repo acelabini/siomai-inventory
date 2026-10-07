@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { InventoryApi } from '../../shared/contracts';
 import type { CatalogLocation, CatalogProduct, InventoryBalance, SaleReceipt as SaleReceiptData } from '../../shared/schemas';
 import { pesosToCentavos } from '../../main/domain/money';
+import { decimalQuantityPriceCentavos } from '../../shared/money';
 import { toPieces } from '../../main/domain/quantities';
 import { getInventoryApi } from '../api';
 import { formatMoney, formatQuantity, LocationSelect } from '../pages/stock-shared';
@@ -18,7 +19,7 @@ function previewLine(line: Line, products: CatalogProduct[]): Preview {
   try {
     const pieces = toPieces(quantity, line.unit, product.piecesPerPack);
     const unitPrice = line.unit === 'pack' ? product.sellingPricePerPackCentavos : product.sellingPricePerPieceCentavos;
-    return { pieces, revenue: Math.round(quantity * unitPrice), product };
+    return { pieces, revenue: decimalQuantityPriceCentavos(quantity, unitPrice), product };
   } catch (error) { return { pieces: 0, revenue: 0, product, error: error instanceof Error ? error.message : 'Enter a valid quantity.' }; }
 }
 
@@ -102,13 +103,13 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
         {search.trim() && <div className="sale-search-results" aria-label="Product search results">{matches.length ? matches.slice(0, 8).map((product) => <button className="secondary-button" type="button" key={product.id} onClick={() => { setLines((current) => [...current, { id: nextLineId.current++, productId: product.id, quantity: '', unit: 'piece' }]); setSearch(''); }}>{product.name} <span className="mono">{product.sku}</span></button>) : <p className="empty-note">No matching products available to add.</p>}</div>}
         {lines.map((line, index) => {
           const preview = previews[index]; const product = preview.product; const available = product ? availability.get(product.id) ?? 0 : 0;
-          return <fieldset className="stock-line sale-line" key={line.id}><legend>{product?.name ?? 'Product'}</legend>
-            <div className="quantity-row"><label className="form-field">Quantity for {product?.name}<input aria-label={`Quantity for ${product?.name}`} type="number" min="0.01" step="any" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></label>
+          return <fieldset className="stock-line sale-line" key={line.id}><legend>{product?.name ?? 'Product'}, line {index + 1}</legend>
+            <div className="quantity-row"><label className="form-field">Quantity for {product?.name}, line {index + 1}<input aria-label={`Line ${index + 1}: Quantity for ${product?.name}`} type="number" min="0.01" step="any" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></label>
               <label className="form-field">Unit<select aria-label={`Unit for ${product?.name}`} value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value as Line['unit'] })}><option value="piece">Piece</option><option value="pack">Pack</option></select></label></div>
             <p className="availability-note">Available: {formatQuantity(available, product?.piecesPerPack ?? 1)}</p>
             {preview.error && <p className="field-error">{preview.error}</p>}
             {product && ((line.unit === 'piece' ? product.sellingPricePerPieceCentavos : product.sellingPricePerPackCentavos) === 0) && <p className="price-warning">Set a selling price before this product can be sold.</p>}
-            <div className="sale-line-footer"><span>{preview.pieces ? `${preview.pieces} pc` : '—'}</span><strong>{formatMoney(preview.revenue)}</strong><button className="text-button destructive" type="button" aria-label={`Remove ${product?.name}`} onClick={() => setLines((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div>
+            <div className="sale-line-footer"><span>{preview.pieces ? `${preview.pieces} pc` : '—'}</span><strong>{formatMoney(preview.revenue)}</strong><button className="text-button destructive" type="button" aria-label={`Remove ${product?.name}, line ${index + 1}`} onClick={() => setLines((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div>
           </fieldset>;
         })}
         <label className="form-field">Amount tendered (₱)<input aria-label="Amount tendered" inputMode="decimal" value={tendered} onChange={(event) => setTendered(event.target.value)} /></label>

@@ -47,9 +47,12 @@ describe('macOS release workflow', () => {
     const appStaple = appAndDmgFlow.indexOf('stapler staple "$APP_PATH"');
     const appValidate = appAndDmgFlow.indexOf('stapler validate "$APP_PATH"');
     const finalDmgCreate = appAndDmgFlow.indexOf('hdiutil create');
+    const finalDmgSign = appAndDmgFlow.indexOf('codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$FINAL_DMG"');
+    const finalDmgSignatureVerify = appAndDmgFlow.indexOf('codesign --verify --strict --verbose=2 "$FINAL_DMG"');
     const dmgSubmit = appAndDmgFlow.indexOf('notarytool submit "$FINAL_DMG"');
     const dmgAccepted = appAndDmgFlow.indexOf('if [[ "$DMG_STATUS" != \'Accepted\' ]]');
     const dmgStaple = appAndDmgFlow.indexOf('stapler staple "$FINAL_DMG"');
+    const finalSignatureCheck = appAndDmgFlow.indexOf('codesign --verify --strict --verbose=2 "$FINAL_DMG"', dmgStaple);
     const dmgValidate = appAndDmgFlow.indexOf('stapler validate "$FINAL_DMG"');
 
     expect(appSubmit).toBeGreaterThanOrEqual(0);
@@ -57,10 +60,14 @@ describe('macOS release workflow', () => {
     expect(appAccepted).toBeLessThan(appStaple);
     expect(appStaple).toBeLessThan(appValidate);
     expect(appValidate).toBeLessThan(finalDmgCreate);
-    expect(finalDmgCreate).toBeLessThan(dmgSubmit);
+    expect(finalDmgCreate).toBeLessThan(finalDmgSign);
+    expect(finalDmgSign).toBeLessThan(finalDmgSignatureVerify);
+    expect(finalDmgSignatureVerify).toBeLessThan(dmgSubmit);
     expect(dmgSubmit).toBeLessThan(dmgAccepted);
     expect(dmgAccepted).toBeLessThan(dmgStaple);
     expect(dmgStaple).toBeLessThan(dmgValidate);
+    expect(finalSignatureCheck).toBeGreaterThan(dmgStaple);
+    expect(finalSignatureCheck).toBeLessThan(dmgValidate);
     expect(appAndDmgFlow).toContain('Siomai-Inventory-${GITHUB_REF_NAME}-universal.dmg');
     expect(appAndDmgFlow).toContain('hdiutil create -volname \'Siomai Inventory\' -srcfolder "$DMG_STAGING_DIR" -ov -format UDZO "$FINAL_DMG"');
     expect(appAndDmgFlow).toContain('codesign --verify --deep --strict --verbose=2 "$APP_PATH"');

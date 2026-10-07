@@ -3,13 +3,15 @@ import type { InventoryApi } from '../../shared/contracts';
 import type { CompleteSetupInput, SetupState } from '../../shared/schemas';
 import { getInventoryApi } from '../api';
 
-type Props = { api?: InventoryApi; onComplete: () => void };
+type SetupChoice = 'samples' | 'import' | 'manual';
+type Props = { api?: InventoryApi; onComplete: (nextView?: string) => void };
 
 export default function SetupPage({ api = getInventoryApi(), onComplete }: Props) {
   const [setup, setSetup] = useState<SetupState | null>(null);
   const [businessName, setBusinessName] = useState('');
   const [locationName, setLocationName] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
+  const [choice, setChoice] = useState<SetupChoice>('samples');
   const [openingStock, setOpeningStock] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [step, setStep] = useState(0);
@@ -36,7 +38,8 @@ export default function SetupPage({ api = getInventoryApi(), onComplete }: Props
   async function finishSetup() {
     const nextErrors: Record<string, string> = {};
     const stock: CompleteSetupInput['openingStock'] = [];
-    for (const productId of selected) {
+    const productsToCreate = choice === 'samples' ? selected : [];
+    for (const productId of productsToCreate) {
       const raw = openingStock[productId] ?? '0';
       const quantity = Number(raw);
       const product = loadedSetup.sampleProducts.find((item) => item.id === productId);
@@ -54,13 +57,13 @@ export default function SetupPage({ api = getInventoryApi(), onComplete }: Props
     const input: CompleteSetupInput = {
       businessName: businessName.trim(),
       locationName: locationName.trim(),
-      sampleProductIds: selected,
+      sampleProductIds: productsToCreate,
       openingStock: stock,
     };
     setSaving(true);
     try {
       await api.completeSetup(input);
-      onComplete();
+      onComplete(choice === 'import' ? 'Import' : choice === 'manual' ? 'Products' : undefined);
     } catch (error) {
       setErrors({ submit: error instanceof Error ? error.message : 'Setup could not be completed.' });
     } finally {
@@ -91,7 +94,13 @@ export default function SetupPage({ api = getInventoryApi(), onComplete }: Props
 
         {step === 1 && (
           <section aria-labelledby="sample-products-title">
-            <h2 id="sample-products-title">Choose your sample products</h2>
+          <h2 id="sample-products-title">Choose how to add products</h2>
+            <fieldset className="setup-product-list" aria-label="Product setup choice">
+              <label className="setup-product-option"><input type="radio" name="product-setup-choice" value="samples" checked={choice === 'samples'} onChange={() => setChoice('samples')} /><span><strong>Use sample products</strong><small>Select from the included siomai catalog.</small></span></label>
+              <label className="setup-product-option"><input type="radio" name="product-setup-choice" value="import" checked={choice === 'import'} onChange={() => setChoice('import')} /><span><strong>Import products or stock from CSV</strong><small>Business and location setup will finish first, then CSV import opens.</small></span></label>
+              <label className="setup-product-option"><input type="radio" name="product-setup-choice" value="manual" checked={choice === 'manual'} onChange={() => setChoice('manual')} /><span><strong>Add products manually later</strong><small>Finish setup and open the product catalog.</small></span></label>
+            </fieldset>
+            {choice === 'samples' && <>
             <p>Select the items you carry. You can add or change products later.</p>
             <div className="setup-product-list">
               {loadedSetup.sampleProducts.map((product) => (
@@ -108,9 +117,12 @@ export default function SetupPage({ api = getInventoryApi(), onComplete }: Props
               ))}
             </div>
             <p className="setup-notice">Selling prices are not included in the source list. Set a piece or pack selling price for each selected product before recording a sale.</p>
+            </>}
             <div className="form-actions">
               <button className="secondary-button" type="button" onClick={() => setStep(0)}>Back</button>
-              <button className="primary-button" type="button" onClick={() => setStep(2)}>Continue to opening stock</button>
+              {choice === 'samples'
+                ? <button className="primary-button" type="button" onClick={() => setStep(2)}>Continue to opening stock</button>
+                : <button className="primary-button" type="button" disabled={saving} onClick={() => void finishSetup()}>{saving ? 'Saving…' : choice === 'import' ? 'Complete setup and import CSV' : 'Complete setup and add products'}</button>}
             </div>
           </section>
         )}

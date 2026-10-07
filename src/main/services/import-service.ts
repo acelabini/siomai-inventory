@@ -8,8 +8,12 @@ export type ImportRequest = CsvImportRequest;
 export type ImportCommitInput = CsvImportCommitInput;
 export type ImportRowError = { row: number; message: string };
 type Row = { row: number; values: Record<string, string> };
-type ParsedRow = { row: number; sku?: string; product?: CatalogProduct; productId?: string; openingPieces?: number; replenishmentPacks?: number; errors: string[] };
+type ParsedRow = { row: number; sku?: string; name?: string; product?: CatalogProduct; productId?: string; openingPieces?: number; replenishmentPacks?: number; errors: string[] };
 type TokenEntry = { hash: string; request: ImportRequest };
+
+function normalizeProductName(value: string): string {
+  return value.trim().toLocaleLowerCase().replaceAll(/\s+/g, ' ');
+}
 
 const aliases: Record<ImportKind, Record<string, string[]>> = {
   products: {
@@ -173,8 +177,9 @@ export class ImportService {
         if (allProducts.some((product) => product.sku.toLowerCase() === sku.toLowerCase())) result.errors.push(`Duplicate SKU "${sku}".`);
         if (piecesPerPack === null || piecesPerPack < 1) result.errors.push('Pieces per pack must be a positive whole number.');
         if (purchaseCost === null || sellingPiece === null || sellingPack === null) result.errors.push('Enter valid PHP amounts with up to two decimal places.');
-        const duplicateName = products.filter((product) => product.name.toLocaleLowerCase() === name.toLocaleLowerCase()).length;
+        const duplicateName = products.filter((product) => normalizeProductName(product.name) === normalizeProductName(name)).length;
         if (duplicateName > 0) result.errors.push(`Product name "${name}" is ambiguous; map it to an existing product or use a corrected name.`);
+        result.name = name;
         if (sku && name && piecesPerPack !== null && piecesPerPack > 0 && purchaseCost !== null && sellingPiece !== null && sellingPack !== null) {
           result.product = { id: '', sku, name, piecesPerPack, purchaseCostPerPackCentavos: purchaseCost, sellingPricePerPieceCentavos: sellingPiece, sellingPricePerPackCentavos: sellingPack, lowStockThresholdPieces: 0, isActive: true };
           const packsRaw = raw('openingPacks');
@@ -238,6 +243,18 @@ export class ImportService {
       }
     }
     if (request.kind === 'products') {
+      const rowsByName = new Map<string, ParsedRow[]>();
+      for (const entry of rows) if (entry.name?.trim()) {
+        const name = normalizeProductName(entry.name);
+        rowsByName.set(name, [...(rowsByName.get(name) ?? []), entry]);
+      }
+      for (const entries of rowsByName.values()) if (entries.length > 1) {
+        for (const entry of entries) {
+          const message = `Duplicate product name "${entry.name}" in this file.`;
+          entry.errors.push(message);
+          errors.push({ row: entry.row, message });
+        }
+      }
       const rowsBySku = new Map<string, ParsedRow[]>();
       for (const entry of rows) if (entry.sku) {
         const sku = entry.sku.toLowerCase();

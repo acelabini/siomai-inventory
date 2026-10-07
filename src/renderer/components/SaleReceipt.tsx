@@ -8,7 +8,7 @@ export default function SaleReceipt({ receipt, onVoid, voiding = false }: { rece
   return <section className="sale-receipt" aria-labelledby="receipt-title">
     <div className="page-heading"><div><p className="eyebrow">{receipt.status === 'voided' ? 'VOIDED SALE' : 'COMPLETED SALE'}</p><h2 id="receipt-title">Receipt</h2></div><span className="mono">{receipt.id.slice(0, 8)}</span></div>
     <div className="catalog-table-wrap"><table className="catalog-table"><thead><tr><th>Product</th><th>Quantity</th><th>Line total</th></tr></thead><tbody>
-      {receipt.lines.map((line) => <tr key={line.productId}><td>{line.productName}</td><td>{line.enteredQuantity} {line.enteredUnit}{line.enteredQuantity === '1' ? '' : 's'}</td><td>{formatMoney(line.lineRevenueCentavos)}</td></tr>)}
+      {receipt.lines.map((line, index) => <tr key={`${line.productId}:${index}`}><td>{line.productName}</td><td>{line.enteredQuantity} {line.enteredUnit}{line.enteredQuantity === '1' ? '' : 's'}</td><td>{formatMoney(line.lineRevenueCentavos)}</td></tr>)}
     </tbody></table></div>
     <dl className="receipt-totals"><div><dt>Total</dt><dd>{formatMoney(receipt.totalCentavos)}</dd></div><div><dt>Paid</dt><dd>{formatMoney(receipt.paymentCentavos)}</dd></div><div><dt>Change</dt><dd>{formatMoney(receipt.changeCentavos)}</dd></div></dl>
     {receipt.status === 'completed' && !confirming && <button className="text-button destructive" type="button" onClick={() => setConfirming(true)}>Void sale</button>}

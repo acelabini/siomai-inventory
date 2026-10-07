@@ -72,6 +72,17 @@ describe('CatalogService', () => {
     }
   });
 
+  it('stores editable nonnegative low-stock thresholds in whole pieces', () => {
+    const { catalog, cleanup } = createCatalog();
+    try {
+      catalog.completeSetup(setup);
+      const product = catalog.listProducts()[0]!;
+      const updated = catalog.saveProduct({ ...product, lowStockThresholdPieces: 12 });
+      expect(updated.lowStockThresholdPieces).toBe(12);
+      expect(() => catalog.saveProduct({ ...updated, lowStockThresholdPieces: -1 })).toThrowError();
+    } finally { cleanup(); }
+  });
+
   it('archives products without deleting their historical records', () => {
     const { catalog, cleanup } = createCatalog();
     try {

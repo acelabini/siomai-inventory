@@ -55,6 +55,12 @@ describe('ReportService', () => {
       expect(reports.getValuationReport({ locationId: main.id, date })).toMatchObject({ totalValueCentavos: 1500, items: [expect.objectContaining({ quantityPieces: 15, valueCentavos: 1500 })] });
       expect(reports.getDiscrepancyReport({ locationId: main.id, date }).count).toBe(1);
       expect(reports.getLowStockReport({ locationId: main.id, date }).items).toHaveLength(0);
+      const updatedProduct = catalog.listProducts()[0]!;
+      catalog.saveProduct({ ...updatedProduct, lowStockThresholdPieces: 20 });
+      expect(reports.getDashboard({ locationId: main.id, date }).metrics.lowStockCount).toBe(1);
+      expect(reports.getLowStockReport({ locationId: main.id, date }).items).toEqual([
+        expect.objectContaining({ productId: pork.id, quantityPieces: 15, lowStockThresholdPieces: 20 }),
+      ]);
     } finally { cleanup(); }
   });
 });

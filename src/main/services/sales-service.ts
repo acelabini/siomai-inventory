@@ -11,6 +11,7 @@ import {
   type SalesListQuery,
 } from '../../shared/schemas';
 import { toPieces } from '../domain/quantities';
+import { decimalQuantityPriceCentavos } from '../../shared/money';
 
 export type SalesErrorCode = 'INVALID_INPUT' | 'NOT_FOUND' | 'INSUFFICIENT_STOCK' | 'INSUFFICIENT_PAYMENT' | 'PRICE_NOT_SET' | 'ALREADY_VOIDED';
 
@@ -39,21 +40,6 @@ function multiply(a: number, b: number): number {
   const result = BigInt(a) * BigInt(b);
   if (result > BigInt(Number.MAX_SAFE_INTEGER)) throw new SalesError('INVALID_INPUT', 'The sale total exceeds the safe range.');
   return Number(result);
-}
-
-function packRevenue(quantity: number, priceCentavos: number): number {
-  const match = /^([0-9]+)(?:\.([0-9]*))?(?:e([+-]?[0-9]+))?$/i.exec(quantity.toString());
-  if (!match) throw new SalesError('INVALID_INPUT', 'Pack quantity must be a valid decimal number.');
-  const fraction = match[2] ?? '';
-  const exponent = Number(match[3] ?? '0');
-  const scale = fraction.length - exponent;
-  let numerator = BigInt(`${match[1]}${fraction}`) * BigInt(priceCentavos);
-  let denominator = 1n;
-  if (scale < 0) numerator *= 10n ** BigInt(-scale);
-  else denominator = 10n ** BigInt(scale);
-  const rounded = (numerator + denominator / 2n) / denominator;
-  if (rounded > BigInt(Number.MAX_SAFE_INTEGER)) throw new SalesError('INVALID_INPUT', 'The sale total exceeds the safe range.');
-  return Number(rounded);
 }
 
 function proratedCost(packCost: number, packSize: number, pieces: number): number {
@@ -95,7 +81,13 @@ export class SalesService {
           const packPrice = safeNumber(product.selling_price_per_pack_centavos);
           const selectedPrice = line.unit === 'pack' ? packPrice : piecePrice;
           if (selectedPrice <= 0) throw new SalesError('PRICE_NOT_SET', `${product.name} has no selling price for ${line.unit}s.`);
-          const revenue = line.unit === 'pack' ? packRevenue(line.quantity, selectedPrice) : multiply(quantityPieces, selectedPrice);
+          let revenue: number;
+          try {
+            revenue = line.unit === 'pack' ? decimalQuantityPriceCentavos(line.quantity, selectedPrice) : multiply(quantityPieces, selectedPrice);
+          } catch (error) {
+            if (error instanceof RangeError) throw new SalesError('INVALID_INPUT', 'The sale total exceeds the safe range.');
+            throw error;
+          }
           const unitCostCentavos = safeNumber(product.purchase_cost_per_pack_centavos);
           const lineCostCentavos = proratedCost(unitCostCentavos, packSize, quantityPieces);
           const sourceLine = {

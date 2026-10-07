@@ -7,7 +7,7 @@ This guide is for the cart operator. The app works offline and keeps inventory o
 1. Open the Siomai Inventory DMG supplied by the business maintainer.
 2. Drag **Siomai Inventory** to **Applications**.
 3. Eject the DMG, then open Siomai Inventory from Applications. The production DMG is Developer ID signed and notarized; do not bypass macOS Gatekeeper for an installer that has not passed the release checklist.
-4. On first launch, enter the business and first cart/location name. Choose the sample products, import a documented CSV, or finish with no products and add them later.
+4. On first launch, enter the business and first cart/location name. Then choose the included sample products, finish setup and continue directly to CSV import, or finish setup and add products manually. Business and location setup is saved before CSV import opens, so the import has an active location for opening stock.
 5. Enter opening stock in whole pieces. Sample products start with no selling price: set each piece and pack selling price under **Products** before recording a sale.
 
 ## Daily work
@@ -37,7 +37,7 @@ Open **Stock count**, select the product, and enter the physical piece or pack c
 
 ### Review and export reports
 
-The Dashboard shows the daily opening, replenished, sold, and on-hand ribbon plus revenue, gross profit, stock value, discrepancies, and low-stock items. Select a location and business date as needed. **Reports** provides sales, stock movements, valuation, profit, count discrepancies, and low-stock details. Choose an export type and select **Export CSV**. Use **Print report** for the macOS print dialog.
+The Dashboard shows a daily activity summary for opening, replenished, sold, and on-hand quantities plus revenue, gross profit, stock value, discrepancies, and low-stock items. The summary is not a full reconciliation: transfers, count adjustments, and voided-sale restocks are not separate categories there. Review detailed movement and count reports when reconciling. Select a location and business date as needed. **Reports** provides sales, stock movements, valuation, profit, count discrepancies, and low-stock details. Choose an export type and select **Export CSV**. Use **Print report** for the macOS print dialog.
 
 Historical stock valuation uses the product's current purchase cost because version 1 does not keep a separate cost snapshot for every stock unit. Sale cost and profit do keep the cost at the time of sale.
 

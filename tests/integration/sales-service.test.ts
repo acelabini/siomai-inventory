@@ -63,6 +63,17 @@ describe('SalesService', () => {
     } finally { cleanup(); }
   });
 
+  it('rounds 0.29 pack at 50 centavos to 15 centavos', () => {
+    const { catalog, inventory, sales, main, pork, cleanup } = createLedger();
+    try {
+      catalog.saveProduct({ id: pork.id, sku: pork.sku, name: pork.name, piecesPerPack: 100, purchaseCostPerPackCentavos: 1000, sellingPricePerPieceCentavos: 1, sellingPricePerPackCentavos: 50, lowStockThresholdPieces: 2 });
+      inventory.setOpeningStock({ locationId: main.id, lines: [{ productId: pork.id, quantity: 29, unit: 'piece' }] });
+      const receipt = sales.completeSale({ locationId: main.id, paymentCentavos: 15, lines: [{ productId: pork.id, quantity: 0.29, unit: 'pack' }] });
+      expect(receipt.totalCentavos).toBe(15);
+      expect(receipt.lines[0]?.lineRevenueCentavos).toBe(15);
+    } finally { cleanup(); }
+  });
+
   it('rejects insufficient payment, zero selling prices and insufficient inventory', () => {
     const { db, inventory, sales, main, pork, cleanup } = createLedger();
     try {
