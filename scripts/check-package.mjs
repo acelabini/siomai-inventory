@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { extractFile, listPackage } from '@electron/asar';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outRoot = path.resolve(process.argv[2] ?? path.join(projectRoot, 'out'));
-const archivePath = findFile(outRoot, 'app.asar');
-assert.ok(archivePath, `No packaged app.asar was found below ${outRoot}. Run npm run package first.`);
+const packageTarget = path.resolve(process.argv[2] ?? path.join(projectRoot, 'out'));
+const archivePath = packageTarget.endsWith('.asar') ? packageTarget : findFile(packageTarget, 'app.asar');
+assert.ok(archivePath, `No packaged app.asar was found at or below ${packageTarget}. Run npm run package first.`);
 
 const entries = listPackage(archivePath, { isPack: false });
 const normalizeEntry = (entry) => entry.replaceAll('\\', '/').replace(/^\/+/, '');
@@ -52,7 +52,7 @@ for (const name of secretEnvironmentNames) {
   }
 }
 
-const bundlePath = findAppBundle(outRoot);
+const bundlePath = packageTarget.endsWith('.app') ? packageTarget : findAppBundle(packageTarget);
 if (bundlePath) {
   const plistPath = path.join(bundlePath, 'Contents', 'Info.plist');
   assert.ok(statSync(plistPath).isFile(), 'The macOS app bundle is missing Info.plist.');

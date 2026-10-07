@@ -56,20 +56,6 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Run unit, integration, renderer, and type checks
-        run: |
-          npm test
-          npm run typecheck
-          npm run lint
-
-      - name: Run Electron end-to-end smoke test
-        run: npm run test:e2e
-
-      - name: Package and inspect local app archive
-        run: |
-          npm run package
-          node scripts/check-package.mjs
-
       - name: Import Developer ID certificate into temporary keychain
         shell: bash
         run: |
@@ -88,18 +74,53 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
+      - name: Run unit, integration, renderer, and type checks
+        run: |
+          npm test
+          npm run typecheck
+          npm run lint
+
+      - name: Run Electron end-to-end smoke test
+        run: npm run test:e2e
+
       - name: Build the universal app and DMG
-        run: npm run make:mac
+        shell: bash
+        run: |
+          rm -rf out/make
+          npm run make:mac
+          UNIVERSAL_APP_COUNT=0
+          APP_PATH=''
+          while IFS= read -r candidate; do
+            UNIVERSAL_APP_COUNT=$((UNIVERSAL_APP_COUNT + 1))
+            APP_PATH="$candidate"
+          done < <(find out -type d -path '*/darwin-universal/Siomai Inventory.app' -prune -print)
+          if [[ "$UNIVERSAL_APP_COUNT" -ne 1 ]]; then
+            printf '::error::Expected exactly one universal app, found %s.\n' "$UNIVERSAL_APP_COUNT"
+            exit 1
+          fi
+          if [[ ! -f "$APP_PATH/Contents/Resources/app.asar" ]]; then
+            echo '::error::The universal app is missing its packaged ASAR.'
+            exit 1
+          fi
+          node scripts/check-package.mjs "$APP_PATH"
+          DMG_COUNT=0
+          DMG_PATH=''
+          while IFS= read -r candidate; do
+            DMG_COUNT=$((DMG_COUNT + 1))
+            DMG_PATH="$candidate"
+          done < <(find out/make -type f -name '*.dmg' -print)
+          if [[ "$DMG_COUNT" -ne 1 ]]; then
+            printf '::error::Expected exactly one release DMG, found %s.\n' "$DMG_COUNT"
+            exit 1
+          fi
+          echo "RELEASE_APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          echo "RELEASE_DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
 
       - name: Notarize and staple app and disk image
         shell: bash
         run: |
-          APP_PATH="$(find out -type d -name 'Siomai Inventory.app' -print -quit)"
-          DMG_PATH="$(find out/make -type f -name '*.dmg' -print -quit)"
-          if [[ -z "$APP_PATH" || -z "$DMG_PATH" ]]; then
-            echo '::error::Forge did not produce both the macOS app and DMG.'
-            exit 1
-          fi
+          APP_PATH="$RELEASE_APP_PATH"
+          DMG_PATH="$RELEASE_DMG_PATH"
           xcrun stapler staple "$APP_PATH"
           xcrun notarytool submit "$DMG_PATH" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
           xcrun stapler staple "$DMG_PATH"
