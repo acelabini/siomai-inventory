@@ -20,9 +20,17 @@ function api(overrides: Partial<InventoryApi> = {}): InventoryApi {
 describe('ImportPage', () => {
   it('keeps the operator on the choose-file stage when the dialog is canceled', async () => {
     render(<ImportPage api={api({ chooseCsvImportFile: vi.fn().mockResolvedValue(null) })} onComplete={vi.fn()} />);
+    expect(screen.getByText('Products')).toBeInTheDocument();
+    expect(screen.getByText('Opening stock')).toBeInTheDocument();
+    expect(screen.getByText('Spreadsheet aggregate')).toBeInTheDocument();
+    expect(screen.getByText(/product details and optional opening packs/i)).toBeInTheDocument();
+    expect(screen.getByText(/starting quantities matched by sku or product name/i)).toBeInTheDocument();
+    expect(screen.getByText(/without creating sales/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /choose csv file/i }));
-    await screen.findByText(/choose a csv file to begin/i);
-    expect(screen.getByRole('list', { name: /import stages/i }).querySelector('[aria-current="step"]')).toHaveTextContent('1 Choose file');
+    await screen.findByText(/your file is checked before any data is added/i);
+    const stages = screen.getByRole('list', { name: /import stages/i });
+    expect(stages.querySelector('[aria-current="step"]')).toHaveTextContent('Choose file');
+    expect(stages.querySelectorAll('[data-state="completed"]')).toHaveLength(0);
   });
 
   it('lets the operator choose a location for opening packs in a products file', async () => {
@@ -34,6 +42,10 @@ describe('ImportPage', () => {
     render(<ImportPage api={services} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /choose csv file/i }));
     await screen.findByRole('heading', { name: /map columns/i });
+    const stages = screen.getByRole('list', { name: /import stages/i });
+    expect(stages.querySelector('[aria-current="step"]')).toHaveTextContent('Map columns');
+    expect(stages.querySelectorAll('[data-state="completed"]')).toHaveLength(1);
+    expect(screen.getByText(/required columns are marked/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/import location/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /preview and validate/i }));
     await waitFor(() => expect(previewCsvImport).toHaveBeenCalledWith(expect.objectContaining({ kind: 'products', locationId: 'loc-1' })));
@@ -54,6 +66,7 @@ describe('ImportPage', () => {
     fireEvent.change(screen.getByLabelText(/unit/i), { target: { value: 'Measure' } });
     fireEvent.click(screen.getByRole('button', { name: /preview and validate/i }));
     expect(await screen.findByText('Row 3')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: /import stages/i }).querySelectorAll('[data-state="completed"]')).toHaveLength(2);
     expect(previewCsvImport).toHaveBeenCalledWith(expect.objectContaining({ mapping: { name: 'Product', quantity: 'Qty', unit: 'Measure' } }));
     expect(screen.getByRole('button', { name: /commit import/i })).toBeDisabled();
   });
@@ -123,6 +136,7 @@ describe('ImportPage', () => {
     expect(await screen.findByText(/no transaction sales will be created/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /commit import/i }));
     await screen.findByText(/imported 1 row/i);
+    expect(screen.getByRole('list', { name: /import stages/i }).querySelectorAll('[data-state="completed"]')).toHaveLength(4);
     expect(commitCsvImport).toHaveBeenCalledWith(expect.objectContaining({ token: 'preview-aggregate', contentHash: 'b'.repeat(64) }));
     fireEvent.click(screen.getByRole('button', { name: /done/i }));
     expect(onComplete).toHaveBeenCalledOnce();

@@ -2,6 +2,16 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { InventoryApi } from '../../shared/contracts';
 import type { CompleteSetupInput, SetupState } from '../../shared/schemas';
 import { getInventoryApi } from '../api';
+import Button from '../components/ui/Button';
+import Field from '../components/ui/Field';
+import InlineNotice from '../components/ui/InlineNotice';
+
+type SetupStep = 0 | 1 | 2;
+const setupSteps: Array<{ step: SetupStep; label: string }> = [
+  { step: 0, label: 'Business and location' },
+  { step: 1, label: 'Product source' },
+  { step: 2, label: 'Opening stock' },
+];
 
 type SetupChoice = 'samples' | 'import' | 'manual';
 type Props = { api?: InventoryApi; onComplete: (nextView?: string) => void };
@@ -14,7 +24,7 @@ export default function SetupPage({ api = getInventoryApi(), onComplete }: Props
   const [choice, setChoice] = useState<SetupChoice>('samples');
   const [openingStock, setOpeningStock] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState<SetupStep>(0);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -73,22 +83,37 @@ export default function SetupPage({ api = getInventoryApi(), onComplete }: Props
 
   return (
     <main className="setup-page" aria-labelledby="setup-title">
-      <div className="setup-panel">
-        <p className="eyebrow">FIRST-RUN SETUP · {step + 1} OF 3</p>
-        <h1 id="setup-title">Set up your business</h1>
-        <p className="setup-intro">A few details make the daily stock ledger yours.</p>
+      <div className="setup-layout">
+        <aside className="setup-welcome">
+          <p className="eyebrow">FIRST-RUN SETUP</p>
+          <h1 id="setup-title">Set up your business</h1>
+          <p className="setup-intro">A few details make the daily stock ledger yours.</p>
+          <InlineNotice tone="neutral" title="Your records stay on this computer">
+            Siomai Inventory works offline. Your business and stock data are saved locally on this device.
+          </InlineNotice>
+          <p className="setup-welcome-detail">You can update products and locations later in Settings. No account or internet connection is required.</p>
+        </aside>
+        <div className="setup-panel">
+          <ol className="setup-progress" aria-label="Setup steps">
+            {setupSteps.map(({ step: itemStep, label }, index) => {
+              const state = itemStep === step ? 'current' : itemStep < step ? 'completed' : 'upcoming';
+              return <li key={label} data-state={state} aria-current={state === 'current' ? 'step' : undefined}>
+                <span className="setup-step-number" aria-hidden="true">{state === 'completed' ? '✓' : index + 1}</span>
+                <span>{label}</span>
+              </li>;
+            })}
+          </ol>
+          <p className="eyebrow setup-step-kicker">STEP {step + 1} OF 3</p>
 
         {step === 0 && (
           <form onSubmit={nextFromBusiness} noValidate>
-            <label className="form-field" htmlFor="business-name">Business name
-              <input id="business-name" value={businessName} onChange={(event) => setBusinessName(event.target.value)} />
-              {errors.businessName && <span className="field-error">{errors.businessName}</span>}
-            </label>
-            <label className="form-field" htmlFor="location-name">Location name
-              <input id="location-name" value={locationName} onChange={(event) => setLocationName(event.target.value)} />
-              {errors.locationName && <span className="field-error">{errors.locationName}</span>}
-            </label>
-            <button className="primary-button" type="submit">Continue</button>
+            <Field label="Business name" htmlFor="business-name" required error={errors.businessName}>
+              <input value={businessName} onChange={(event) => setBusinessName(event.target.value)} />
+            </Field>
+            <Field label="Location name" htmlFor="location-name" required error={errors.locationName}>
+              <input value={locationName} onChange={(event) => setLocationName(event.target.value)} />
+            </Field>
+            <Button variant="primary" type="submit">Continue</Button>
           </form>
         )}
 
@@ -119,10 +144,10 @@ export default function SetupPage({ api = getInventoryApi(), onComplete }: Props
             <p className="setup-notice">Selling prices are not included in the source list. Set a piece or pack selling price for each selected product before recording a sale.</p>
             </>}
             <div className="form-actions">
-              <button className="secondary-button" type="button" onClick={() => setStep(0)}>Back</button>
+              <Button variant="secondary" onClick={() => setStep(0)}>Back</Button>
               {choice === 'samples'
-                ? <button className="primary-button" type="button" onClick={() => setStep(2)}>Continue to opening stock</button>
-                : <button className="primary-button" type="button" disabled={saving} onClick={() => void finishSetup()}>{saving ? 'Saving…' : choice === 'import' ? 'Complete setup and import CSV' : 'Complete setup and add products'}</button>}
+                ? <Button variant="primary" onClick={() => setStep(2)}>Continue to opening stock</Button>
+                : <Button variant="primary" busy={saving} onClick={() => void finishSetup()}>{saving ? 'Saving…' : choice === 'import' ? 'Complete setup and import CSV' : 'Complete setup and add products'}</Button>}
             </div>
           </section>
         )}
@@ -136,9 +161,8 @@ export default function SetupPage({ api = getInventoryApi(), onComplete }: Props
               {selected.map((productId) => {
                 const product = loadedSetup.sampleProducts.find((item) => item.id === productId)!;
                 const fieldError = errors[`stock:${productId}`];
-                return <label className="form-field" htmlFor={`stock-${productId}`} key={productId}>
-                  Opening pieces for {product.name}
-                  <input id={`stock-${productId}`} type="number" inputMode="numeric" min="0" step="1" value={openingStock[productId] ?? '0'} aria-invalid={Boolean(fieldError)} onChange={(event) => {
+                return <Field label={`Opening pieces for ${product.name}`} htmlFor={`stock-${productId}`} key={productId} error={fieldError} hint={`Enter whole pieces currently on hand. ${product.piecesPerPack} pieces per pack.`}>
+                  <input type="number" inputMode="numeric" min="0" step="1" value={openingStock[productId] ?? '0'} onChange={(event) => {
                     const value = event.target.value;
                     setOpeningStock((current) => ({ ...current, [productId]: value }));
                     const quantity = Number(value);
@@ -149,18 +173,18 @@ export default function SetupPage({ api = getInventoryApi(), onComplete }: Props
                         : '',
                     }));
                   }} />
-                  {fieldError && <span className="field-error">{fieldError}</span>}
-                </label>;
+                </Field>;
               })}
             </div>
-            {errors.sellingPrices && <p className="setup-notice" role="note">{errors.sellingPrices}</p>}
-            {errors.submit && <p className="field-error" role="alert">{errors.submit}</p>}
+            {errors.sellingPrices && <InlineNotice tone="warning" title="Selling prices are needed">{errors.sellingPrices}</InlineNotice>}
+            {errors.submit && <InlineNotice tone="danger" title="Setup could not be completed">{errors.submit}</InlineNotice>}
             <div className="form-actions">
-              <button className="secondary-button" type="button" onClick={() => setStep(1)}>Back</button>
-              <button className="primary-button" type="button" disabled={saving} onClick={() => void finishSetup()}>{saving ? 'Saving…' : 'Finish setup'}</button>
+              <Button variant="secondary" onClick={() => setStep(1)}>Back</Button>
+              <Button variant="primary" busy={saving} onClick={() => void finishSetup()}>{saving ? 'Saving…' : 'Finish setup'}</Button>
             </div>
           </section>
         )}
+        </div>
       </div>
     </main>
   );

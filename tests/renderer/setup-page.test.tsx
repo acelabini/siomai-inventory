@@ -22,6 +22,33 @@ function setupApi(completeSetup: ReturnType<typeof vi.fn>): InventoryApi {
 }
 
 describe('SetupPage', () => {
+  it('shows labeled setup progress and explains that business data stays on this computer', async () => {
+    render(<SetupPage api={setupApi(vi.fn())} onComplete={vi.fn()} />);
+    await screen.findByRole('heading', { name: /set up your business/i });
+
+    const progress = screen.getByRole('list', { name: /setup steps/i });
+    expect(progress).toHaveTextContent('Business and location');
+    expect(progress).toHaveTextContent('Product source');
+    expect(progress).toHaveTextContent('Opening stock');
+    expect(progress.querySelector('[aria-current="step"]')).toHaveTextContent('Business and location');
+    expect(screen.getByRole('status')).toHaveTextContent(/offline|on this computer|local storage/i);
+  });
+
+  it('marks finished steps complete and keeps business and location values when going back', async () => {
+    render(<SetupPage api={setupApi(vi.fn())} onComplete={vi.fn()} />);
+    await screen.findByRole('heading', { name: /set up your business/i });
+    fireEvent.change(screen.getByLabelText(/business name/i), { target: { value: 'Cart ni Ate' } });
+    fireEvent.change(screen.getByLabelText(/location name/i), { target: { value: 'Main Cart' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    const progress = screen.getByRole('list', { name: /setup steps/i });
+    expect(progress.querySelector('[aria-current="step"]')).toHaveTextContent('Product source');
+    expect(progress.querySelectorAll('[data-state="completed"]')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: /^back$/i }));
+    expect(screen.getByLabelText(/business name/i)).toHaveValue('Cart ni Ate');
+    expect(screen.getByLabelText(/location name/i)).toHaveValue('Main Cart');
+  });
+
   it('requires a business name and location before proceeding', async () => {
     render(<SetupPage api={setupApi(vi.fn())} onComplete={vi.fn()} />);
     await screen.findByRole('heading', { name: /set up your business/i });
@@ -78,5 +105,21 @@ describe('SetupPage', () => {
       openingStock: [{ productId: 'siomai-pork', quantityPieces: 12 }],
     }));
     expect(onComplete).toHaveBeenCalledOnce();
+  });
+
+  it('keeps entered opening stock and shows a recoverable error when setup submission fails', async () => {
+    const completeSetup = vi.fn().mockRejectedValue(new Error('Database is temporarily unavailable.'));
+    render(<SetupPage api={setupApi(completeSetup)} onComplete={vi.fn()} />);
+    await screen.findByRole('heading', { name: /set up your business/i });
+    fireEvent.change(screen.getByLabelText(/business name/i), { target: { value: 'Cart ni Ate' } });
+    fireEvent.change(screen.getByLabelText(/location name/i), { target: { value: 'Main Cart' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    fireEvent.click(await screen.findByLabelText(/siomai pork/i));
+    fireEvent.click(screen.getByRole('button', { name: /continue to opening stock/i }));
+    fireEvent.change(screen.getByLabelText(/opening pieces for siomai pork/i), { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Database is temporarily unavailable.');
+    expect(screen.getByLabelText(/opening pieces for siomai pork/i)).toHaveValue(12);
   });
 });

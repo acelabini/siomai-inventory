@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import type { InventoryApi } from '../../shared/contracts';
 import type { CsvImportCommitInput, ImportKind, ImportMapping, ImportPreview, CatalogLocation } from '../../shared/schemas';
 import { getInventoryApi } from '../api';
+import Button from '../components/ui/Button';
+import Field from '../components/ui/Field';
+import InlineNotice from '../components/ui/InlineNotice';
 
 type ChosenFile = { fileName: string; csv: string };
 type Column = { key: string; label: string; aliases: string[]; optional?: boolean };
@@ -23,6 +26,13 @@ const columns: Record<ImportKind, Column[]> = {
     { key: 'pieces', label: 'Loose opening pieces', aliases: ['pieces'] }, { key: 'totalCost', label: 'Cost per pack (PHP)', aliases: ['total cost'] },
   ],
 };
+
+const importStages = [
+  { number: 1, label: 'Choose file' },
+  { number: 2, label: 'Map columns' },
+  { number: 3, label: 'Review' },
+  { number: 4, label: 'Import' },
+] as const;
 
 function csvHeaders(csv: string): string[] {
   const firstLine = csv.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0] ?? '';
@@ -113,24 +123,29 @@ export default function ImportPage({ api = getInventoryApi(), onComplete, onBack
   const fileIssueCount = preview?.errors.filter((item) => item.row === 1).length ?? 0;
   const invalidRowCount = new Set(preview?.errors.filter((item) => item.row > 1).map((item) => item.row) ?? []).size;
   return <section className="catalog-page import-page" aria-labelledby="page-title">
-    <div className="page-heading"><div><p className="eyebrow">Settings · CSV import</p><h1 id="page-title">Import data</h1></div>{onBack && <button className="secondary-button" type="button" onClick={onBack}>Back to Settings</button>}</div>
-    <ol className="import-stages" aria-label="Import stages"><li aria-current={stage === 1 ? 'step' : undefined}>1 Choose file</li><li aria-current={stage === 2 ? 'step' : undefined}>2 Map columns</li><li aria-current={stage === 3 ? 'step' : undefined}>3 Preview and validate</li><li aria-current={stage === 4 ? 'step' : undefined}>4 Commit</li></ol>
-    {error && <p role="alert" className="field-error">{error}</p>}
-    {stage === 1 && <section aria-labelledby="choose-file-title"><h2 id="choose-file-title">Choose a CSV file</h2><p>Start with a products, opening stock, or spreadsheet aggregate template.</p><button type="button" className="primary-button" onClick={() => void chooseFile()}>Choose CSV file</button><p className="report-note">Choose a CSV file to begin. Files are checked before anything is added to your ledger.</p></section>}
+    <header className="page-header"><div className="page-header-copy"><p className="eyebrow">Settings · CSV import</p><h1 id="page-title">Import data</h1><p className="page-description">Bring in a product catalog or stock history from a CSV file.</p></div>{onBack && <Button variant="secondary" onClick={onBack}>Back to Settings</Button>}</header>
+    <ol className="import-stages" aria-label="Import stages">{importStages.map(({ number, label }) => {
+      const completed = stage === 4 || number < stage;
+      const current = stage < 4 && number === stage;
+      return <li key={number} data-state={completed ? 'completed' : current ? 'current' : 'upcoming'} aria-current={current ? 'step' : undefined}><span className="import-stage-number" aria-hidden="true">{completed ? '✓' : number}</span><span>{label}</span></li>;
+    })}</ol>
+    {error && <InlineNotice tone="danger" title="Import could not continue">{error}</InlineNotice>}
+    {stage === 1 && <section aria-labelledby="choose-file-title"><h2 id="choose-file-title">Choose a CSV file</h2><p>Choose one of these supported formats:</p><ul className="import-type-descriptions"><li><strong>Products</strong><span>Product details and optional opening packs.</span></li><li><strong>Opening stock</strong><span>Starting quantities matched by SKU or product name.</span></li><li><strong>Spreadsheet aggregate</strong><span>Opening and replenishment stock totals without creating sales.</span></li></ul><Button variant="primary" onClick={() => void chooseFile()}>Choose CSV file</Button><p className="report-note">Your file is checked before any data is added to the ledger.</p></section>}
     {stage === 2 && file && <section aria-labelledby="map-title"><h2 id="map-title">Map columns</h2><p>File: <strong>{file.fileName}</strong></p>
-      <label className="form-field compact-field" htmlFor="import-kind">Import type<select id="import-kind" aria-label="Import type" value={kind} onChange={(event) => changeKind(event.target.value as ImportKind)}><option value="products">Products</option><option value="opening-stock">Opening stock</option><option value="spreadsheet-aggregate">Spreadsheet aggregate</option></select></label>
-      {needsLocation && <label className="form-field compact-field" htmlFor="import-location">Location<select id="import-location" aria-label="Import location" value={locationId} onChange={(event) => setLocationId(event.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>}
+      <Field label="Import type" htmlFor="import-kind"><select aria-label="Import type" value={kind} onChange={(event) => changeKind(event.target.value as ImportKind)}><option value="products">Products</option><option value="opening-stock">Opening stock</option><option value="spreadsheet-aggregate">Spreadsheet aggregate</option></select></Field>
+      {needsLocation && <Field label="Location" htmlFor="import-location" required><select aria-label="Import location" value={locationId} onChange={(event) => setLocationId(event.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></Field>}
+      <p className="import-mapping-guidance" role="note">Required columns are marked “Required”. Optional columns can be left unmapped.</p>
       {kind === 'opening-stock' && <p className="report-note">Map at least one: SKU or product name.</p>}
-      <div className="import-mapping-grid">{currentColumns.map((column) => <label className="form-field compact-field" htmlFor={`map-${column.key}`} key={column.key}>{column.label}{column.optional && <small>Optional</small>}<select id={`map-${column.key}`} aria-label={column.label} value={mapping[column.key] ?? ''} onChange={(event) => setMapping((current) => ({ ...current, [column.key]: event.target.value }))}><option value="">{column.optional ? 'Do not import' : 'Choose a column'}</option>{headers.map((header) => <option value={header} key={header}>{header}</option>)}</select></label>)}</div>
+      <div className="import-mapping-grid">{currentColumns.map((column) => <Field label={column.label} htmlFor={`map-${column.key}`} hint={column.optional ? 'Optional' : undefined} required={!column.optional} key={column.key}><select aria-label={column.label} value={mapping[column.key] ?? ''} onChange={(event) => setMapping((current) => ({ ...current, [column.key]: event.target.value }))}><option value="">{column.optional ? 'Do not import' : 'Choose a column'}</option>{headers.map((header) => <option value={header} key={header}>{header}</option>)}</select></Field>)}</div>
       {kind === 'spreadsheet-aggregate' && <p className="report-note" role="note">Aggregate stock values are recorded as opening and replenishment movements. Transaction sales will not be created.</p>}
-      <div className="form-actions"><button className="primary-button" type="button" disabled={busy || (needsLocation && !locationId)} onClick={() => void previewFile()}>{busy ? 'Checking…' : 'Preview and validate'}</button></div>
+      <div className="form-actions"><Button variant="primary" busy={busy} disabled={needsLocation && !locationId} onClick={() => void previewFile()}>{busy ? 'Checking…' : 'Preview and validate'}</Button></div>
     </section>}
     {stage === 3 && preview && <section aria-labelledby="preview-title"><h2 id="preview-title">Preview and validate</h2>{preview.kind !== 'spreadsheet-aggregate' && <p>{preview.summary}</p>}<dl className="import-preview-counts"><div><dt>Valid rows</dt><dd>{preview.validRows}</dd></div><div><dt>Invalid rows</dt><dd>{invalidRowCount}</dd></div><div><dt>File issues</dt><dd>{fileIssueCount}</dd></div></dl>
       {preview.kind === 'spreadsheet-aggregate' && <p className="report-note" role="note">Imported aggregate stock data. No transaction sales will be created.</p>}
       {fileIssueCount > 0 && <section aria-label="File issues"><h3>File issues</h3><ul className="import-errors">{preview.errors.filter((item) => item.row === 1).map((item, index) => <li key={`file-${index}`}>{item.message}</li>)}</ul></section>}
       {preview.errors.some((item) => item.row > 1) && <section aria-label="Import errors"><h3>Rows to correct</h3><ul className="import-errors">{preview.errors.filter((item) => item.row > 1).map((item, index) => <li key={`${item.row}-${index}`}><strong>Row {item.row}</strong> {item.message}</li>)}</ul></section>}
-      <div className="form-actions"><button className="secondary-button" type="button" onClick={() => setStage(2)}>Back to mapping</button><button className="primary-button" type="button" disabled={preview.errors.length > 0 || preview.validRows === 0 || busy} onClick={() => void commitImport()}>{busy ? 'Importing…' : 'Commit import'}</button></div>
+      <div className="form-actions"><Button variant="secondary" onClick={() => setStage(2)}>Back to mapping</Button><Button variant="primary" disabled={preview.errors.length > 0 || preview.validRows === 0} busy={busy} onClick={() => void commitImport()}>{busy ? 'Importing…' : 'Commit import'}</Button></div>
     </section>}
-    {stage === 4 && <section aria-labelledby="import-complete-title"><p className="eyebrow">Import complete</p><h2 id="import-complete-title">Imported {imported} row{imported === 1 ? '' : 's'}</h2>{kind === 'spreadsheet-aggregate' && <p>Aggregate stock movements were imported. No transaction sales were created.</p>}<button type="button" className="primary-button" onClick={onComplete}>Done</button></section>}
+    {stage === 4 && <section aria-labelledby="import-complete-title"><p className="eyebrow">Import complete</p><h2 id="import-complete-title">Imported {imported} row{imported === 1 ? '' : 's'}</h2>{kind === 'spreadsheet-aggregate' && <p>Aggregate stock movements were imported. No transaction sales were created.</p>}<Button variant="primary" onClick={onComplete}>Done</Button></section>}
   </section>;
 }
