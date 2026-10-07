@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { InventoryApi } from '../../shared/contracts';
 import type { CatalogLocation, CatalogProduct, InventoryBalance, SaleReceipt as SaleReceiptData } from '../../shared/schemas';
 import { pesosToCentavos } from '../../main/domain/money';
@@ -7,6 +7,12 @@ import { toPieces } from '../../main/domain/quantities';
 import { getInventoryApi } from '../api';
 import { formatMoney, formatQuantity, LocationSelect } from '../pages/stock-shared';
 import SaleReceipt from './SaleReceipt';
+import Button from './ui/Button';
+import EmptyState from './ui/EmptyState';
+import Field from './ui/Field';
+import InlineNotice from './ui/InlineNotice';
+import PageHeader from './ui/PageHeader';
+import Panel from './ui/Panel';
 
 type Line = { id: number; productId: string; quantity: string; unit: 'piece' | 'pack' };
 type Preview = { pieces: number; revenue: number; product?: CatalogProduct; error?: string };
@@ -23,12 +29,13 @@ function previewLine(line: Line, products: CatalogProduct[]): Preview {
   } catch (error) { return { pieces: 0, revenue: 0, product, error: error instanceof Error ? error.message : 'Enter a valid quantity.' }; }
 }
 
-export default function SaleComposer({ api = getInventoryApi(), onCompleted, onVoid, renderReceipt = true, activeLocationId, onLocationChange }: { api?: InventoryApi; onCompleted?: (receipt: SaleReceiptData) => void; onVoid?: (receipt: SaleReceiptData, reason: string) => void | Promise<void>; renderReceipt?: boolean; activeLocationId?: string; onLocationChange?: (locationId: string) => void }) {
+export default function SaleComposer({ api = getInventoryApi(), onCompleted, onVoid, renderReceipt = true, activeLocationId, onLocationChange, availabilityRevision = 0 }: { api?: InventoryApi; onCompleted?: (receipt: SaleReceiptData) => void; onVoid?: (receipt: SaleReceiptData, reason: string) => void | Promise<void>; renderReceipt?: boolean; activeLocationId?: string; onLocationChange?: (locationId: string) => void; availabilityRevision?: number }) {
   const [locations, setLocations] = useState<CatalogLocation[]>([]);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
-  const [balances, setBalances] = useState<InventoryBalance[]>([]);
+  const [balanceSnapshot, setBalanceSnapshot] = useState<{ context: string; balances: InventoryBalance[]; failed?: boolean } | null>(null);
   const [locationId, setLocationId] = useState('');
   const selectedLocationId = activeLocationId ?? locationId;
+  const balanceContext = `${selectedLocationId}:${availabilityRevision}`;
   const updateLocation = (value: string) => activeLocationId === undefined ? setLocationId(value) : onLocationChange?.(value);
   const [search, setSearch] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
@@ -40,6 +47,9 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
   const [saving, setSaving] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const nextLineId = useRef(0);
+  const focusLineId = useRef<number | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const formId = useId();
 
   useEffect(() => {
     let active = true;
@@ -54,20 +64,29 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
   useEffect(() => {
     if (!selectedLocationId) return;
     let active = true;
-    void api.getBalances(selectedLocationId).then((value) => { if (active) setBalances(value); }).catch(() => { if (active) setError('Current availability could not be loaded.'); });
+    void api.getBalances(selectedLocationId).then((value) => { if (active) setBalanceSnapshot({ context: balanceContext, balances: value }); }).catch(() => { if (active) { setBalanceSnapshot({ context: balanceContext, balances: [], failed: true }); setError('Current availability could not be loaded.'); } });
     return () => { active = false; };
-  }, [api, selectedLocationId]);
+  }, [api, selectedLocationId, balanceContext]);
 
   const matches = useMemo(() => products.filter((product) => `${product.name} ${product.sku}`.toLowerCase().includes(search.trim().toLowerCase())), [products, search]);
   const previews = useMemo(() => lines.map((line) => previewLine(line, products)), [lines, products]);
   const total = previews.reduce((sum, line) => sum + line.revenue, 0);
   let paid = -1;
   try { if (tendered.trim()) paid = pesosToCentavos(tendered); } catch { paid = -1; }
-  const availability = new Map(balances.map((item) => [item.productId, item.quantityPieces]));
-  const valid = lines.length > 0 && previews.every((item, index) => item.product && item.pieces > 0 && item.error === undefined && (lines[index].unit === 'pack' ? item.product.sellingPricePerPackCentavos : item.product.sellingPricePerPieceCentavos) > 0 && item.pieces <= (availability.get(item.product.id) ?? 0)) && Number.isSafeInteger(total) && paid >= total;
+  const availabilityReady = balanceSnapshot?.context === balanceContext && !balanceSnapshot.failed;
+  const availabilityMessage = balanceSnapshot?.context === balanceContext && balanceSnapshot.failed ? 'Availability unavailable. Reload this page to retry.' : 'Checking availability…';
+  const availability = new Map((availabilityReady ? balanceSnapshot.balances : []).map((item) => [item.productId, item.quantityPieces]));
+  const valid = availabilityReady && lines.length > 0 && previews.every((item, index) => item.product && item.pieces > 0 && item.error === undefined && (lines[index].unit === 'pack' ? item.product.sellingPricePerPackCentavos : item.product.sellingPricePerPieceCentavos) > 0 && item.pieces <= (availability.get(item.product.id) ?? 0)) && Number.isSafeInteger(total) && paid >= total;
 
   function updateLine(index: number, changes: Partial<Line>) {
     setLines((current) => current.map((line, itemIndex) => itemIndex === index ? { ...line, ...changes } : line));
+  }
+
+  function addProduct(product: CatalogProduct) {
+    const id = nextLineId.current++;
+    focusLineId.current = id;
+    setLines((current) => [...current, { id, productId: product.id, quantity: '', unit: 'piece' }]);
+    setSearch('');
   }
 
   async function complete() {
@@ -76,9 +95,10 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
     try {
       const result = await api.completeSale({ locationId: selectedLocationId, paymentCentavos: paid, note: note.trim() || undefined, lines: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity), unit: line.unit })) });
       setReceipt(result); setLines([]); setSearch(''); setTendered(''); setNote(''); setSuccess('Sale completed.');
+      searchRef.current?.focus();
       onCompleted?.(result);
-      try { setBalances(await api.getBalances(selectedLocationId)); }
-      catch { setError('Sale completed, but current availability could not be refreshed.'); }
+      try { setBalanceSnapshot({ context: balanceContext, balances: await api.getBalances(selectedLocationId) }); }
+      catch { setBalanceSnapshot({ context: balanceContext, balances: [], failed: true }); setError('Sale completed, but current availability could not be refreshed.'); }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The sale could not be completed.'); }
     finally { setSaving(false); }
   }
@@ -89,36 +109,58 @@ export default function SaleComposer({ api = getInventoryApi(), onCompleted, onV
     try {
       if (onVoid) await onVoid(receipt, reason);
       else setReceipt(await api.voidSale(receipt.id, reason));
-      setBalances(await api.getBalances(selectedLocationId));
+      try { setBalanceSnapshot({ context: balanceContext, balances: await api.getBalances(selectedLocationId) }); }
+      catch { setBalanceSnapshot({ context: balanceContext, balances: [], failed: true }); setError('Sale voided, but current availability could not be refreshed.'); }
     }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'The sale could not be voided.'); }
     finally { setVoiding(false); }
   }
 
-  return <section className="catalog-page" aria-labelledby="sales-title">
-    <div className="page-heading"><div><p className="eyebrow">DAILY LEDGER · STOCK OUT</p><h1 id="sales-title">New sale</h1></div>{locations.length > 0 && <LocationSelect locations={locations} value={selectedLocationId} onChange={updateLocation} />}</div>
-    <div className="stock-workflow-layout sale-layout">
-      <form className="catalog-form stock-lines" onSubmit={(event) => { event.preventDefault(); void complete(); }}>
-        <label className="form-field">Find a product<input autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or SKU" /></label>
-        {search.trim() && <div className="sale-search-results" aria-label="Product search results">{matches.length ? matches.slice(0, 8).map((product) => <button className="secondary-button" type="button" key={product.id} onClick={() => { setLines((current) => [...current, { id: nextLineId.current++, productId: product.id, quantity: '', unit: 'piece' }]); setSearch(''); }}>{product.name} <span className="mono">{product.sku}</span></button>) : <p className="empty-note">No matching products available to add.</p>}</div>}
-        {lines.map((line, index) => {
-          const preview = previews[index]; const product = preview.product; const available = product ? availability.get(product.id) ?? 0 : 0;
-          return <fieldset className="stock-line sale-line" key={line.id}><legend>{product?.name ?? 'Product'}, line {index + 1}</legend>
-            <div className="quantity-row"><label className="form-field">Quantity for {product?.name}, line {index + 1}<input aria-label={`Line ${index + 1}: Quantity for ${product?.name}`} type="number" min="0.01" step="any" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></label>
-              <label className="form-field">Unit<select aria-label={`Line ${index + 1}: Unit for ${product?.name}`} value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value as Line['unit'] })}><option value="piece">Piece</option><option value="pack">Pack</option></select></label></div>
-            <p className="availability-note">Available: {formatQuantity(available, product?.piecesPerPack ?? 1)}</p>
-            {preview.error && <p className="field-error">{preview.error}</p>}
-            {product && ((line.unit === 'piece' ? product.sellingPricePerPieceCentavos : product.sellingPricePerPackCentavos) === 0) && <p className="price-warning">Set a selling price before this product can be sold.</p>}
-            <div className="sale-line-footer"><span>{preview.pieces ? `${preview.pieces} pc` : '—'}</span><strong>{formatMoney(preview.revenue)}</strong><button className="text-button destructive" type="button" aria-label={`Remove ${product?.name}, line ${index + 1}`} onClick={() => setLines((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div>
-          </fieldset>;
-        })}
-        <label className="form-field">Amount tendered (₱)<input aria-label="Amount tendered" inputMode="decimal" value={tendered} onChange={(event) => setTendered(event.target.value)} /></label>
-        <label className="form-field">Note<input value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} /></label>
-        {error && <p role="alert" className="field-error">{error}</p>}{success && <p role="status" className="success-note">{success}</p>}
-        <button className="primary-button" type="submit" disabled={!valid || saving}>{saving ? 'Completing…' : 'Complete sale'}</button>
-      </form>
-      <aside className="workflow-summary" aria-label="Sale summary"><p className="empty-kicker">CHECKOUT</p><h2>Transaction total</h2><dl><div><dt>Items</dt><dd>{previews.reduce((sum, item) => sum + item.pieces, 0)} pc</dd></div><div><dt>Total</dt><dd>{formatMoney(total)}</dd></div><div><dt>Tendered</dt><dd>{paid >= 0 ? formatMoney(paid) : '—'}</dd></div><div><dt>Change</dt><dd>{paid >= total && total > 0 ? formatMoney(paid - total) : '—'}</dd></div></dl><p>Each entry keeps its entered unit, selling price, and cost snapshot.</p></aside>
-    </div>
+  const paymentError = tendered.trim() && (paid < 0 ? 'Enter a valid peso amount with up to two decimal places.' : paid < total ? `Enter at least ${formatMoney(total)} to complete this sale.` : undefined);
+
+  return <section className="catalog-page sales-page" aria-labelledby={`${formId}-title`}>
+    <PageHeader eyebrow="Daily ledger · Stock out" title="New sale" titleId={`${formId}-title`} description="Find a product, enter the quantity, then collect payment." actions={locations.length > 0 && <LocationSelect locations={locations} value={selectedLocationId} onChange={updateLocation} />} />
+    <form className="stock-workflow-layout sale-layout" onSubmit={(event) => { event.preventDefault(); void complete(); }}>
+      <div className="sale-workflow">
+        <Panel title="Find products" meta="Search by name or SKU. Press Enter to add a single matching product.">
+          <Field label="Find a product" htmlFor={`${formId}-search`}>
+            <input ref={searchRef} autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or SKU" onKeyDown={(event) => {
+              if (event.key === 'Enter') { event.preventDefault(); if (search.trim() && matches.length === 1) addProduct(matches[0]); }
+            }} />
+          </Field>
+          {search.trim() && <div className="sale-search-results" role="region" aria-label="Product search results">{matches.length ? matches.slice(0, 8).map((product) => <Button variant="secondary" className="sale-product-tile" key={product.id} aria-label={`Add ${product.name} (${product.sku})`} aria-describedby={`${formId}-product-${product.id}-prices ${formId}-product-${product.id}-stock`} onClick={() => addProduct(product)}>
+            <span className="sale-product-identity"><strong>{product.name}</strong><span className="mono">{product.sku}</span></span>
+            <span id={`${formId}-product-${product.id}-prices`} className="sale-product-prices">{formatMoney(product.sellingPricePerPieceCentavos)} / piece · {formatMoney(product.sellingPricePerPackCentavos)} / pack</span>
+            <span id={`${formId}-product-${product.id}-stock`} className="sale-product-availability">{availabilityReady ? `Available: ${formatQuantity(availability.get(product.id) ?? 0, product.piecesPerPack)}` : availabilityMessage}</span>
+          </Button>) : <EmptyState icon="search" title="No matching products" description="Try another product name or SKU." />}</div>}
+        </Panel>
+        <Panel title="Order lines" meta={lines.length ? `${lines.length} ${lines.length === 1 ? 'entry' : 'entries'} · Each entered unit is kept on the receipt.` : undefined}>
+          <div className="sale-order-lines">{lines.length === 0 && <EmptyState icon="sale" title="Start a new order" description="Find a product above to add your first item." />}
+          {lines.map((line, index) => {
+            const preview = previews[index]; const product = preview.product; const available = product ? availability.get(product.id) ?? 0 : 0;
+            const unitPrice = product && (line.unit === 'piece' ? product.sellingPricePerPieceCentavos : product.sellingPricePerPackCentavos);
+            const lineError = preview.error || (product && unitPrice === 0 ? 'Set a selling price before this product can be sold.' : availabilityReady && preview.pieces > available ? `Only ${available} pc available. Reduce the quantity.` : line.quantity && preview.pieces === 0 ? 'Enter a quantity greater than zero.' : undefined);
+            return <fieldset className="stock-line sale-line" key={line.id}><legend>{product?.name ?? 'Product'}, line {index + 1}</legend>
+              <div className="quantity-row"><Field label="Quantity" htmlFor={`${formId}-quantity-${line.id}`} error={lineError}>
+                <input ref={(element) => { if (element && focusLineId.current === line.id) { element.focus(); focusLineId.current = null; } }} aria-label={`Line ${index + 1}: Quantity for ${product?.name}`} type="number" min="0.01" step="any" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} />
+              </Field><Field label="Unit" htmlFor={`${formId}-unit-${line.id}`}>
+                <select aria-label={`Line ${index + 1}: Unit for ${product?.name}`} value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value as Line['unit'] })}><option value="piece">Piece</option><option value="pack">Pack</option></select>
+              </Field></div>
+              <p className="availability-note">{availabilityReady ? `Available: ${formatQuantity(available, product?.piecesPerPack ?? 1)}` : availabilityMessage}</p>
+              <div className="sale-line-footer"><span>{preview.pieces ? `${preview.pieces} pc` : '—'}</span><strong>{formatMoney(preview.revenue)}</strong><Button variant="ghost" aria-label={`Remove ${product?.name}, line ${index + 1}`} onClick={() => { setLines((current) => current.filter((_, itemIndex) => itemIndex !== index)); searchRef.current?.focus(); }}>Remove</Button></div>
+            </fieldset>;
+          })}</div>
+        </Panel>
+      </div>
+      <aside className="workflow-summary sale-checkout-summary" aria-label="Current order">
+        <p className="eyebrow">Checkout</p><h2>Current order</h2>
+        <dl><div><dt>Items</dt><dd>{previews.reduce((sum, item) => sum + item.pieces, 0)} pc</dd></div><div className="sale-grand-total"><dt>Total</dt><dd>{formatMoney(total)}</dd></div><div><dt>Tendered</dt><dd>{paid >= 0 ? formatMoney(paid) : '—'}</dd></div><div><dt>Change</dt><dd>{paid >= total && total > 0 ? formatMoney(paid - total) : '—'}</dd></div></dl>
+        <Field label="Amount tendered (₱)" htmlFor={`${formId}-tendered`} error={paymentError || undefined} hint="Enter the amount received in pesos."><input aria-label="Amount tendered" inputMode="decimal" value={tendered} onChange={(event) => setTendered(event.target.value)} /></Field>
+        <Field label="Note" htmlFor={`${formId}-note`}><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} /></Field>
+        {error && <InlineNotice tone="danger" title="Sale needs attention">{error}</InlineNotice>}{success && <InlineNotice tone="success" title={success} />}
+        {!valid && !tendered.trim() && <p className="checkout-help">{lines.length ? 'Enter quantities and payment to complete this sale.' : 'Add a product to begin checkout.'}</p>}
+        <Button variant="primary" type="submit" disabled={!valid} busy={saving} icon="sale">{saving ? 'Completing sale…' : 'Complete sale'}</Button>
+      </aside>
+    </form>
     {renderReceipt && receipt && <SaleReceipt receipt={receipt} onVoid={voidReceipt} voiding={voiding} />}
   </section>;
 }

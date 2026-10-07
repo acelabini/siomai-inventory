@@ -10,12 +10,13 @@ export type ConfirmDialogProps = {
   cancelLabel?: string;
   variant?: ButtonProps['variant'];
   busy?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   children?: ReactNode;
 };
 
-export function ConfirmDialog({ open, title, description, confirmLabel, cancelLabel = 'Cancel', variant = 'danger', busy = false, onConfirm, onCancel, children }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, title, description, confirmLabel, cancelLabel = 'Cancel', variant = 'danger', busy = false, confirmDisabled = false, onConfirm, onCancel, children }: ConfirmDialogProps) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -89,7 +90,7 @@ export function ConfirmDialog({ open, title, description, confirmLabel, cancelLa
       {children && <div className="dialog-body">{children}</div>}
       <div className="dialog-actions">
         <Button variant="secondary" data-dialog-cancel disabled={busy} onClick={onCancel}>{cancelLabel}</Button>
-        <Button variant={variant} data-dialog-confirm busy={busy} onClick={onConfirm}>{confirmLabel}</Button>
+        <Button variant={variant} data-dialog-confirm busy={busy} disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</Button>
       </div>
     </div>
   </div>, document.body);

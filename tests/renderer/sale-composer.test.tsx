@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryApi } from '../../src/shared/contracts';
-import type { CatalogLocation, CatalogProduct, SaleReceipt } from '../../src/shared/schemas';
+import type { CatalogLocation, CatalogProduct, InventoryBalance, SaleReceipt } from '../../src/shared/schemas';
 import SaleComposer from '../../src/renderer/components/SaleComposer';
 import SaleReceiptView from '../../src/renderer/components/SaleReceipt';
+import SalesPage from '../../src/renderer/pages/SalesPage';
 
 afterEach(cleanup);
 
@@ -37,7 +38,7 @@ describe('sale composer', () => {
     render(<SaleComposer api={makeApi()} />);
     const search = await screen.findByLabelText(/find a product/i);
     fireEvent.change(search, { target: { value: 'pork' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Siomai Pork PORK' }));
+    fireEvent.click(screen.getByRole('button', { name: /add siomai pork/i }));
     await waitForAvailability('25 pc');
     fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '1' } });
     fireEvent.change(screen.getByLabelText(/unit for siomai pork/i), { target: { value: 'pack' } });
@@ -50,7 +51,7 @@ describe('sale composer', () => {
     const api = makeApi({ listProducts: vi.fn().mockResolvedValue([product]), getBalances: vi.fn().mockResolvedValue([{ locationId: 'main', productId: 'pork', quantityPieces: 100 }]) });
     render(<SaleComposer api={api} />);
     fireEvent.change(await screen.findByLabelText(/find a product/i), { target: { value: 'pork' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Siomai Pork PORK' }));
+    fireEvent.click(screen.getByRole('button', { name: /add siomai pork/i }));
     await waitForAvailability('1 pack');
     fireEvent.change(screen.getByLabelText(/unit for siomai pork/i), { target: { value: 'pack' } });
     fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '0.29' } });
@@ -65,12 +66,12 @@ describe('sale composer', () => {
     render(<SaleComposer api={api} />);
     const search = await screen.findByLabelText(/find a product/i);
     fireEvent.change(search, { target: { value: 'pork' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Siomai Pork PORK' }));
+    fireEvent.click(screen.getByRole('button', { name: /add siomai pork/i }));
     await waitForAvailability('25 pc');
     fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '1' } });
     fireEvent.change(screen.getByLabelText(/unit for siomai pork/i), { target: { value: 'pack' } });
     fireEvent.change(search, { target: { value: 'pork' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Siomai Pork PORK' }));
+    fireEvent.click(screen.getByRole('button', { name: /add siomai pork/i }));
     const quantities = await screen.findAllByLabelText(/quantity for siomai pork/i);
     expect(quantities).toHaveLength(2);
     expect(quantities[0]).toHaveAccessibleName('Line 1: Quantity for Siomai Pork');
@@ -116,6 +117,7 @@ describe('sale composer', () => {
     fireEvent.change(screen.getByLabelText(/amount tendered/i), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '26' } });
     expect(complete).toBeDisabled();
+    expect(screen.getByLabelText(/quantity for siomai pork/i)).toHaveAccessibleDescription(/only 25 pc available/i);
   });
 
   it('preserves entered values and displays recoverable API errors', async () => {
@@ -126,9 +128,14 @@ describe('sale composer', () => {
     await waitForAvailability('25 pc');
     fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '2' } });
     fireEvent.change(screen.getByLabelText(/amount tendered/i), { target: { value: '6' } });
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Customer order' } });
+    fireEvent.change(screen.getByLabelText(/find a product/i), { target: { value: 'beef' } });
     fireEvent.click(screen.getByRole('button', { name: /complete sale/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent('The balance changed.');
     expect((screen.getByLabelText(/quantity for siomai pork/i) as HTMLInputElement).value).toBe('2');
+    expect(screen.getByLabelText(/find a product/i)).toHaveValue('beef');
+    expect(screen.getByLabelText('Amount tendered')).toHaveValue('6');
+    expect(screen.getByLabelText('Note')).toHaveValue('Customer order');
   });
 
   it('shows the completed receipt and requires an explicit void confirmation', async () => {
@@ -136,11 +143,166 @@ describe('sale composer', () => {
     const onVoid = vi.fn();
     render(<SaleReceiptView receipt={receipt} onVoid={onVoid} />);
     expect(screen.getAllByText('₱6.00')).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: /void sale/i }));
+    const trigger = screen.getByRole('button', { name: /void sale/i });
+    trigger.focus();
+    fireEvent.click(trigger);
     expect(onVoid).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'Entered twice' } });
+    const dialog = screen.getByRole('dialog', { name: /void this sale/i });
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    expect(within(dialog).getByRole('button', { name: /confirm void/i })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: '   ' } });
+    expect(within(dialog).getByRole('button', { name: /confirm void/i })).toBeDisabled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(onVoid).not.toHaveBeenCalled();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onVoid).not.toHaveBeenCalled();
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: ' Entered twice ' } });
+    const confirm = screen.getByRole('button', { name: /confirm void/i });
+    confirm.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(screen.getByLabelText(/reason/i)).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(confirm).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: /confirm void/i }));
     await waitFor(() => expect(onVoid).toHaveBeenCalledWith('Entered twice'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('shows availability and both selling units before adding a product and supports keyboard entry', async () => {
+    render(<SaleComposer api={makeApi()} />);
+    const search = await screen.findByLabelText(/find a product/i);
+    fireEvent.change(search, { target: { value: 'pork' } });
+    const result = await screen.findByRole('button', { name: /add siomai pork/i });
+    await waitFor(() => expect(result).toHaveTextContent('Available: 25 pc (2 packs + 5 pc)'));
+    expect(result).toHaveTextContent('PORK');
+    expect(result).toHaveTextContent('₱3.00 / piece');
+    expect(result).toHaveTextContent('₱25.00 / pack');
+    expect(screen.queryByLabelText(/quantity for siomai pork/i)).not.toBeInTheDocument();
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(screen.getByLabelText(/quantity for siomai pork/i)).toHaveFocus();
+    fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Amount tendered'), { target: { value: '10' } });
+    const summary = screen.getByRole('complementary', { name: 'Current order' });
+    expect(within(summary).getByText('Items').nextElementSibling).toHaveTextContent('2 pc');
+    expect(within(summary).getByText('Total').nextElementSibling).toHaveTextContent('₱6.00');
+    expect(within(summary).getByText('Tendered').nextElementSibling).toHaveTextContent('₱10.00');
+    expect(within(summary).getByText('Change').nextElementSibling).toHaveTextContent('₱4.00');
+    expect(within(summary).getByRole('button', { name: 'Complete sale' })).toBeEnabled();
+  });
+
+  it('explains zero-priced lines next to the invalid quantity control', async () => {
+    render(<SaleComposer api={makeApi({ listProducts: vi.fn().mockResolvedValue([{ ...pork, sellingPricePerPieceCentavos: 0 }]) })} />);
+    fireEvent.change(await screen.findByLabelText(/find a product/i), { target: { value: 'pork' } });
+    fireEvent.click(await screen.findByRole('button', { name: /add siomai pork/i }));
+    fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '1' } });
+    expect(screen.getByLabelText(/quantity for siomai pork/i)).toHaveAccessibleDescription(/set a selling price/i);
+    expect(screen.getByRole('button', { name: 'Complete sale' })).toBeDisabled();
+  });
+
+  it('identifies pending availability before selection and blocks checkout until it is known', async () => {
+    let resolveBalances!: (balances: InventoryBalance[]) => void;
+    const balances = new Promise<InventoryBalance[]>((resolve) => { resolveBalances = resolve; });
+    const api = makeApi({ getBalances: vi.fn().mockReturnValue(balances) });
+    render(<SaleComposer api={api} />);
+    fireEvent.change(await screen.findByLabelText(/find a product/i), { target: { value: 'pork' } });
+    const result = screen.getByRole('button', { name: /add siomai pork/i });
+    expect(result).toHaveAccessibleDescription(/checking availability/i);
+    expect(result).not.toHaveTextContent('Available: 0 pc');
+    fireEvent.click(result);
+    fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText('Amount tendered'), { target: { value: '3' } });
+    expect(screen.getByRole('button', { name: 'Complete sale' })).toBeDisabled();
+    resolveBalances([{ locationId: 'main', productId: 'pork', quantityPieces: 25 }]);
+    await waitForAvailability('25 pc');
+    expect(screen.getByRole('button', { name: 'Complete sale' })).toBeEnabled();
+  });
+
+  it('retains the void reason and shows an API rejection inside the dialog', async () => {
+    const receipt = await makeApi().completeSale({ locationId: 'main', lines: [], paymentCentavos: 1000 });
+    const onVoid = vi.fn().mockRejectedValue(new Error('Sale could not be voided. Try again.'));
+    render(<SaleReceiptView receipt={receipt} onVoid={onVoid} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Void sale' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'Wrong order' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm void' }));
+    expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent('Sale could not be voided. Try again.');
+    expect(screen.getByLabelText(/reason/i)).toHaveValue('Wrong order');
+    expect(screen.getByRole('button', { name: 'Confirm void' })).toBeEnabled();
+  });
+
+  it('closes a successful void dialog even when refreshing availability fails', async () => {
+    const receipt = await makeApi().completeSale({ locationId: 'main', lines: [], paymentCentavos: 1000 });
+    const api = makeApi({
+      voidSale: vi.fn().mockResolvedValue({ ...receipt, status: 'voided' }),
+      getBalances: vi.fn().mockResolvedValueOnce([{ locationId: 'main', productId: 'pork', quantityPieces: 25 }]).mockResolvedValueOnce([{ locationId: 'main', productId: 'pork', quantityPieces: 23 }]).mockRejectedValue(new Error('Availability refresh failed.')),
+    });
+    render(<SaleComposer api={api} />);
+    fireEvent.change(await screen.findByLabelText(/find a product/i), { target: { value: 'pork' } });
+    fireEvent.click(screen.getByRole('button', { name: /add siomai pork/i }));
+    await waitForAvailability('25 pc');
+    fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Amount tendered'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Complete sale' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Void sale' }));
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'Duplicate' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm void' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('Voided')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/sale voided.*availability could not be refreshed/i);
+    fireEvent.change(screen.getByLabelText(/find a product/i), { target: { value: 'pork' } });
+    expect(screen.getByRole('button', { name: /add siomai pork/i })).toHaveAccessibleDescription(/availability unavailable/i);
+    expect(api.voidSale).toHaveBeenCalledTimes(1);
+  });
+
+  it('labels receipt status and sales history while refreshing a voided sale', async () => {
+    const receipt = await makeApi().completeSale({ locationId: 'main', lines: [], paymentCentavos: 1000 });
+    const voided = { ...receipt, status: 'voided' as const };
+    const api = makeApi({ listSales: vi.fn().mockResolvedValueOnce([receipt]).mockResolvedValue([voided]), voidSale: vi.fn().mockResolvedValue(voided) });
+    render(<SalesPage api={api} activeLocationId="main" />);
+    const history = await screen.findByRole('table', { name: 'Recent sales' });
+    expect(within(history).getByText('Completed')).toBeInTheDocument();
+    fireEvent.click(within(history).getByRole('button', { name: /view receipt/i }));
+    const receiptRegion = screen.getByRole('region', { name: 'Receipt' });
+    expect(within(receiptRegion).getByText('Completed')).toBeInTheDocument();
+    fireEvent.click(within(receiptRegion).getByRole('button', { name: 'Void sale' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(/restores each sold quantity/i);
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'Duplicate' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm void' }));
+    await waitFor(() => expect(api.voidSale).toHaveBeenCalledWith('sale-1', 'Duplicate'));
+    await waitFor(() => expect(within(history).getByText('Voided')).toBeInTheDocument());
+    expect(within(receiptRegion).getByText('Voided')).toBeInTheDocument();
+    expect(within(receiptRegion).queryByRole('button', { name: 'Void sale' })).not.toBeInTheDocument();
+    expect(api.listSales).toHaveBeenLastCalledWith({ locationId: 'main' });
+  });
+
+  it('refreshes checkout availability after a history void without clearing the current draft', async () => {
+    const receipt = await makeApi().completeSale({ locationId: 'main', lines: [], paymentCentavos: 1000 });
+    const voided = { ...receipt, status: 'voided' as const };
+    const api = makeApi({
+      listSales: vi.fn().mockResolvedValue([receipt]), voidSale: vi.fn().mockResolvedValue(voided),
+      getBalances: vi.fn().mockResolvedValueOnce([{ locationId: 'main', productId: 'pork', quantityPieces: 25 }]).mockResolvedValue([{ locationId: 'main', productId: 'pork', quantityPieces: 27 }]),
+    });
+    render(<SalesPage api={api} activeLocationId="main" />);
+    fireEvent.change(await screen.findByLabelText(/find a product/i), { target: { value: 'pork' } });
+    fireEvent.click(screen.getByRole('button', { name: /add siomai pork/i }));
+    await waitForAvailability('25 pc');
+    fireEvent.change(screen.getByLabelText(/quantity for siomai pork/i), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText('Amount tendered'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Next customer' } });
+    fireEvent.click(within(screen.getByRole('table', { name: 'Recent sales' })).getByRole('button', { name: /view receipt/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Void sale' }));
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'Duplicate' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm void' }));
+    await waitForAvailability('27 pc');
+    expect(screen.getByLabelText(/quantity for siomai pork/i)).toHaveValue(1);
+    expect(screen.getByLabelText('Amount tendered')).toHaveValue('3');
+    expect(screen.getByLabelText('Note')).toHaveValue('Next customer');
+    expect(api.getBalances).toHaveBeenCalledTimes(2);
   });
 
   it('renders repeated source sale lines as separate receipt rows', () => {
