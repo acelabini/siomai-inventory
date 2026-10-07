@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryApi } from '../../src/shared/contracts';
+import type { SaleSummary, StockMovement } from '../../src/shared/schemas';
 import App from '../../src/renderer/App';
 import DashboardPage from '../../src/renderer/pages/DashboardPage';
 import ReportsPage from '../../src/renderer/pages/ReportsPage';
@@ -28,22 +29,73 @@ function makeApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
 }
 
 describe('dashboard and reports', () => {
-  it('loads default location and Manila date, then shows five metrics and the spreadsheet ledger table', async () => {
+  it('shows four daily metrics and one actionable stock attention notice', async () => {
     const api = makeApi();
     render(<DashboardPage api={api} />);
     const location = await screen.findByLabelText(/location/i);
     expect((location as HTMLSelectElement).value).toBe('main');
     await waitFor(() => expect(api.getDashboard).toHaveBeenCalledWith(expect.objectContaining({ locationId: 'main', date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) })));
     expect(await screen.findByText('₱125.00')).toBeInTheDocument();
-    expect(screen.getByText('Gross profit')).toBeInTheDocument();
-    expect(screen.getByText('Stock value')).toBeInTheDocument();
-    expect(screen.getByText('Discrepancies')).toBeInTheDocument();
-    expect(screen.getByText('Low stock')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Today at a glance' })).toBeInTheDocument();
+    const summary = screen.getByRole('region', { name: 'Daily summary' });
+    expect(within(summary).getAllByRole('article')).toHaveLength(4);
+    expect(within(summary).getByRole('article', { name: 'Sales' })).toHaveTextContent('₱125.00');
+    expect(within(summary).getByRole('article', { name: 'Gross profit' })).toHaveTextContent('₱45.00');
+    expect(within(summary).getByRole('article', { name: 'Items sold' })).toHaveTextContent('20 pc');
+    expect(within(summary).getByRole('article', { name: 'Stock value' })).toHaveTextContent('₱820.00');
+    const notice = screen.getByRole('status', { name: '' });
+    expect(notice).toHaveTextContent('1 low-stock product');
+    expect(notice).toHaveTextContent('2 discrepancies');
+    expect(within(notice).getByRole('button', { name: 'View low stock' })).toBeInTheDocument();
+    expect(within(notice).getByRole('button', { name: 'Review discrepancies' })).toBeInTheDocument();
     expect(screen.getByRole('table', { name: /daily inventory ledger/i })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: /daily activity summary/i })).toHaveTextContent(/not a full stock reconciliation/i);
     expect(screen.getByRole('columnheader', { name: /opening/i })).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /siomai pork/i })).toHaveTextContent('146');
-    expect(within(screen.getByRole('row', { name: /siomai pork/i })).getByLabelText(/low stock/i)).toHaveTextContent('⚠ Low stock');
+    expect(within(screen.getByRole('row', { name: /siomai pork/i })).getByText('Low stock')).toBeInTheDocument();
+  });
+
+  it('routes the stock attention actions to inventory and stock count', async () => {
+    const onNavigate = vi.fn();
+    render(<DashboardPage api={makeApi()} onNavigate={onNavigate} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'View low stock' }));
+    expect(onNavigate).toHaveBeenLastCalledWith('Inventory');
+    fireEvent.click(screen.getByRole('button', { name: 'Review discrepancies' }));
+    expect(onNavigate).toHaveBeenLastCalledWith('Stock count');
+  });
+
+  it('shows zero stock checks without warning treatment', async () => {
+    const api = makeApi({ getDashboard: vi.fn().mockResolvedValue({ locationId: 'main', date: '2026-10-07', metrics: { revenueCentavos: 0, costCentavos: 0, grossProfitCentavos: 0, stockValueCentavos: 0, discrepancyCount: 0, lowStockCount: 0 }, products: [] }) });
+    render(<DashboardPage api={api} />);
+    const checks = await screen.findByRole('region', { name: 'Stock checks' });
+    expect(checks).toHaveTextContent('Low stock0');
+    expect(checks).toHaveTextContent('Discrepancies0');
+    expect(checks).toHaveTextContent('All clear');
+    expect(checks.querySelector('.status-badge-warning, .status-badge-danger')).toBeNull();
+    expect(screen.queryByText('Stock needs attention')).not.toBeInTheDocument();
+    expect(screen.getByRole('article', { name: 'Items sold' })).toHaveTextContent('0 pc');
+  });
+
+  it('merges the four newest sales and stock movements and displays Manila time', async () => {
+    const sale = (id: string, businessAt: string, totalCentavos: number): SaleSummary => ({ id, locationId: 'main', businessAt, totalCentavos, paymentCentavos: totalCentavos, changeCentavos: 0, status: 'completed', note: null, lines: [] });
+    const movement = (id: string, occurredAt: string, productName: string): StockMovement => ({ id, locationId: 'main', productId: id, productName, quantityPieces: 66, movementType: 'replenishment', occurredAt, relatedEntityType: 'replenishment', relatedEntityId: id, note: null, unitCostCentavos: 100, lineCostCentavos: 6600 });
+    const api = makeApi({
+      listSales: vi.fn().mockResolvedValue([sale('old-sale', '2026-10-06 14:00:00', 100), sale('new-sale', '2026-10-06 16:30:00', 12500), sale('mid-sale', '2026-10-06 15:40:00', 2500)]),
+      getMovementHistory: vi.fn().mockResolvedValue([movement('mid-movement', '2026-10-06 16:10:00', 'Pork'), movement('new-movement', '2026-10-06 16:50:00', 'Beef'), movement('old-movement', '2026-10-06 13:00:00', 'Chicken')]),
+    });
+    render(<DashboardPage api={api} />);
+    const activity = await screen.findByRole('list', { name: 'Recent activity' });
+    const entries = within(activity).getAllByRole('listitem');
+    expect(entries).toHaveLength(4);
+    expect(entries[0]).toHaveTextContent('Beef');
+    expect(entries[1]).toHaveTextContent('₱125.00');
+    expect(entries[2]).toHaveTextContent('Pork');
+    expect(entries[3]).toHaveTextContent('₱25.00');
+    expect(entries[0].querySelector('time')).toHaveAttribute('dateTime', '2026-10-06T16:50:00Z');
+    expect(entries[0].querySelector('time')).toHaveTextContent(/10\/7\/2026.*12:50.*AM/i);
+    expect(within(activity).queryByText(/Chicken/)).not.toBeInTheDocument();
+    expect(api.listSales).toHaveBeenCalledWith({ locationId: 'main', limit: 4 });
+    expect(api.getMovementHistory).toHaveBeenCalledWith({ locationId: 'main', limit: 4 });
   });
 
   it('offers useful actions when there are no inventory rows', async () => {
@@ -54,6 +106,8 @@ describe('dashboard and reports', () => {
     fireEvent.click(screen.getByRole('button', { name: /reconcile stock count/i }));
     expect(onNavigate).toHaveBeenCalledWith('Stock count');
     expect(screen.getByRole('button', { name: /add products/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /add products/i }));
+    expect(onNavigate).toHaveBeenLastCalledWith('Products');
   });
 
   it('refreshes reports when filters change and invokes the print command', async () => {
@@ -106,20 +160,39 @@ describe('dashboard and reports', () => {
     expect(api.completeSetup).toHaveBeenCalledWith({ businessName: 'Cart', locationName: 'Main Cart', sampleProductIds: [], openingStock: [] });
   });
 
-  it('shows valuation, discrepancy, and low-stock detail rows in reports', async () => {
+  it('focuses the selected report and exports that kind with the active filters', async () => {
     const api = makeApi({
-      getValuationReport: vi.fn().mockResolvedValue({ date: '2026-10-07', totalValueCentavos: 2500, items: [{ locationId: 'main', productId: 'pork', productName: 'Siomai Pork', quantityPieces: 25, valueCentavos: 2500 }] }),
-      getDiscrepancyReport: vi.fn().mockResolvedValue({ date: '2026-10-07', count: 1, items: [{ locationId: 'main', productId: 'pork', productName: 'Siomai Pork', expectedPieces: 28, countedPieces: 25, differencePieces: -3, countedAt: '2026-10-06 18:00:00' }] }),
+      getValuationReport: vi.fn().mockResolvedValue({ date: '2026-10-07', totalValueCentavos: 999999999, items: [{ locationId: 'main', productId: 'pork', productName: 'Siomai Pork', quantityPieces: 25, valueCentavos: 999999999 }] }),
+      getDiscrepancyReport: vi.fn().mockResolvedValue({ date: '2026-10-07', count: 3, items: [{ locationId: 'main', productId: 'pork', productName: 'Siomai Pork', expectedPieces: 27, countedPieces: 25, differencePieces: -2, countedAt: '2026-10-06 18:00:00' }, { locationId: 'main', productId: 'beef', productName: 'Beef', expectedPieces: 5, countedPieces: 8, differencePieces: 3, countedAt: '2026-10-06 18:00:00' }, { locationId: 'main', productId: 'chicken', productName: 'Chicken', expectedPieces: 0, countedPieces: 0, differencePieces: 0, countedAt: '2026-10-06 18:00:00' }] }),
       getLowStockReport: vi.fn().mockResolvedValue({ date: '2026-10-07', count: 1, items: [{ locationId: 'main', productId: 'pork', productName: 'Siomai Pork', quantityPieces: 3, lowStockThresholdPieces: 10 }] }),
+      exportReportCsv: vi.fn().mockResolvedValue(true),
     });
     render(<ReportsPage api={api} />);
-    expect(await screen.findByRole('table', { name: /stock valuation details/i })).toBeInTheDocument();
-    expect(screen.getByRole('row', { name: /siomai pork.*25.*₱25.00/i })).toBeInTheDocument();
+    await screen.findByRole('region', { name: 'Report summary' });
+    const selector = screen.getByLabelText('Report type');
+    fireEvent.change(selector, { target: { value: 'valuation' } });
+    expect(screen.getByRole('table', { name: /stock valuation details/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('table')).toHaveLength(1);
+    expect(screen.getByRole('row', { name: /siomai pork.*25.*₱9,999,999.99/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /sales report/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('article', { name: 'Revenue' })).not.toBeInTheDocument();
+    expect(screen.getByText(/current product purchase cost/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Report location'), { target: { value: 'branch' } });
+    fireEvent.change(screen.getByLabelText('Report date'), { target: { value: '2026-10-06' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+    await waitFor(() => expect(api.exportReportCsv).toHaveBeenLastCalledWith('valuation', { locationId: 'branch', date: '2026-10-06' }));
+    expect(await screen.findByText('CSV export saved.')).toBeInTheDocument();
+    fireEvent.change(selector, { target: { value: 'discrepancies' } });
     expect(screen.getByRole('table', { name: /stock count discrepancies/i })).toBeInTheDocument();
-    expect(screen.getByRole('row', { name: /siomai pork.*28.*25.*-3/i })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /siomai pork.*27.*25.*−2 pc/i })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /beef.*5.*8.*\+3 pc/i })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /chicken.*0.*0.*0 pc/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('table')).toHaveLength(1);
+    expect(screen.queryByText(/current product purchase cost/i)).not.toBeInTheDocument();
+    fireEvent.change(selector, { target: { value: 'low-stock' } });
     expect(screen.getByRole('table', { name: /low stock details/i })).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /siomai pork.*3.*10/i })).toBeInTheDocument();
-    expect(screen.getByText(/current product purchase cost/i)).toBeInTheDocument();
+    expect(screen.getAllByRole('table')).toHaveLength(1);
   });
 
   it('uses the app active location across sales and every location-aware stock workflow', async () => {

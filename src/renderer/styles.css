@@ -385,6 +385,54 @@ h1 { margin-bottom: 0; font-family: var(--font-display); font-size: 34px; font-w
 .report-section-title { margin: 24px 0 10px; font-size: 16px; font-weight: 650; }
 .report-note { margin: -2px 0 10px; color: #687269; font-size: 12px; }
 .reports-page .data-table-scroll { margin-bottom: 20px; }
+/* Overview and focused reports */
+.overview-page .eyebrow { overflow-wrap: anywhere; }
+.overview-page .page-header-actions { min-width: 0; max-width: 100%; }
+.overview-filters .form-field { min-width: 0; width: 180px; }
+.overview-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 0; }
+.attention-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.overview-page > .inline-notice { margin-bottom: var(--space-5); }
+.stock-check-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); margin-bottom: var(--space-5); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--paper); }
+.stock-check-summary dl, .stock-check-summary dl > div { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+.stock-check-summary dl { gap: var(--space-5); }
+.stock-check-summary dt { color: var(--muted); font-size: 12px; }
+.stock-check-summary dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+.overview-inventory, .overview-activity { margin-top: var(--space-5); }
+.overview-inventory .panel-body { padding: 0; }
+.overview-inventory .ledger-ribbon { flex-wrap: wrap; gap: var(--space-3); margin: 0; padding: var(--space-4) var(--space-5); }
+.overview-inventory .ledger-ribbon > .table-subtitle { flex-basis: 100%; margin: 0; color: var(--muted); white-space: normal; line-height: 1.5; }
+.overview-inventory .data-table-scroll { border-right: 0; border-bottom: 0; border-left: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+.overview-inventory .data-table td:first-child { min-width: 160px; overflow-wrap: anywhere; }
+.activity-list { margin: 0; padding: 0; list-style: none; }
+.activity-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); padding: var(--space-4) 0; border-bottom: 1px solid var(--border); }
+.activity-list li:first-child { padding-top: 0; }
+.activity-list li:last-child { padding-bottom: 0; border-bottom: 0; }
+.activity-icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: var(--radius-control); background: var(--steam); color: var(--leaf); }
+.activity-title { display: block; font-size: 13px; font-weight: 650; text-transform: capitalize; }
+.activity-list p { margin: var(--space-1) 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.activity-list time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
+.reports-page .page-header { flex-direction: column; align-items: stretch; }
+.reports-page .page-header-actions { min-width: 0; }
+.reports-page .report-filters { width: 100%; margin: 0; }
+.report-filters .form-field { flex: 1 1 160px; min-width: 0; }
+.reports-page > .inline-notice { margin-bottom: var(--space-5); }
+.reports-page .report-metrics { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-top: 0; }
+.reports-page .ui-panel .data-table-scroll { margin: 0; }
+.reports-page .report-note { margin: 0 0 var(--space-4); color: var(--muted); line-height: 1.6; }
+.reports-page .data-table td:first-child { overflow-wrap: anywhere; }
+@media (max-width: 1100px) {
+  .overview-page .overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview-page > .inline-notice { flex-wrap: wrap; }
+  .overview-page .notice-action { max-width: 100%; }
+}
+@media (max-width: 760px) {
+  .overview-filters { width: 100%; }
+  .overview-filters .form-field { flex: 1 1 160px; }
+  .activity-list li { grid-template-columns: auto minmax(0, 1fr); }
+  .activity-list time { grid-column: 2; text-align: left; }
+  .reports-page .report-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-filters .form-field { flex-basis: 160px; }
+}
 .sale-layout { grid-template-columns: minmax(360px, 1.25fr) minmax(270px, .75fr); }
 .sale-search-results { display: grid; gap: 6px; }
 .sale-search-results .secondary-button { display: flex; align-items: center; justify-content: space-between; min-height: 38px; text-align: left; }
