@@ -17,6 +17,11 @@ const config: ForgeConfig = {
     extendInfo: {
       LSMinimumSystemVersion: '13.0.0',
     },
+    // better-sqlite3 ships every platform's prebuild in each arch build and picks one at
+    // runtime, so the universal merge sees identical single-arch binaries in both halves.
+    osxUniversal: {
+      x64ArchFiles: '**/node_modules/better-sqlite3/prebuilds/*.node',
+    },
     osxSign: process.env.APPLE_SIGNING_IDENTITY
       ? {
           identity: process.env.APPLE_SIGNING_IDENTITY,
