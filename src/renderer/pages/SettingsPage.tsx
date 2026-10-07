@@ -1,6 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { InventoryApi } from '../../shared/contracts';
 import { getInventoryApi } from '../api';
+import Button from '../components/ui/Button';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
+import Field from '../components/ui/Field';
+import InlineNotice from '../components/ui/InlineNotice';
+import PageHeader from '../components/ui/PageHeader';
+import Panel from '../components/ui/Panel';
 
 type SelectedBackup = { token: string; fileName: string };
 
@@ -12,6 +18,8 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [startupWarning, setStartupWarning] = useState('');
+  const [lastBackupFile, setLastBackupFile] = useState('');
+  const restoreTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -46,7 +54,8 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
     setBusy(true); setError(''); setMessage('');
     try {
       const backup = await api.createManualBackup();
-      setMessage(`Backup created: ${backup.fileName}`);
+      setLastBackupFile(backup.fileName);
+      setMessage('Manual backup created.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'A backup could not be created.'); }
     finally { setBusy(false); }
   }
@@ -70,28 +79,38 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
     finally { setBusy(false); }
   }
 
-  return <section className="catalog-page settings-page" aria-labelledby="settings-title">
-    <div className="page-heading"><div><p className="eyebrow">Business setup</p><h1 id="settings-title">Settings</h1></div></div>
-    {error && <p role="alert" className="field-error">{error}</p>}
-    {startupWarning && <p role="alert" className="field-error">{startupWarning}</p>}
-    {message && <p role="status" className="report-note">{message}</p>}
-    <section aria-labelledby="business-settings-title">
-      <h2 id="business-settings-title">Business</h2>
-      <label className="form-field" htmlFor="business-name">Business name<input id="business-name" value={businessName} maxLength={120} onChange={(event) => setBusinessName(event.target.value)} /></label>
-      <p className="report-note">Currency: PHP (₱). Time zone: Asia/Manila.</p>
-      <button className="primary-button" type="button" disabled={busy || !businessName.trim()} onClick={() => void saveBusinessName()}>Save settings</button>
-    </section>
-    <section aria-labelledby="backup-settings-title">
-      <h2 id="backup-settings-title">Backups and recovery</h2>
-      <p>Automatic backups are stored once per Manila calendar day and the latest 30 are kept.</p>
-      <div className="form-actions"><span aria-label="Backup directory">{backupDirectory}</span><button className="secondary-button" type="button" onClick={() => void chooseDirectory()}>Choose backup directory</button></div>
-      <button className="primary-button" type="button" disabled={busy} onClick={() => void createManualBackup()}>{busy ? 'Working…' : 'Create backup now'}</button>
-      <div className="form-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void chooseBackup()}>Restore from backup</button><button className="secondary-button" type="button" onClick={() => onNavigate('Import')}>Import CSV data</button></div>
-    </section>
-    {selectedBackup && <section className="confirmation-panel" role="dialog" aria-modal="true" aria-labelledby="restore-title">
-      <h2 id="restore-title">Restore {selectedBackup.fileName}?</h2>
-      <p>Current data will be protected with a safety backup before the selected database is restored.</p>
-      <div className="form-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => { setSelectedBackup(null); setError(''); }}>Cancel</button><button className="primary-button" type="button" disabled={busy} onClick={() => void restore()}>{busy ? 'Restoring…' : 'Restore backup'}</button></div>
-    </section>}
-  </section>;
+  return <main className="catalog-page redesigned-catalog-page settings-page" aria-labelledby="settings-title">
+    <PageHeader eyebrow="Business setup" title="Settings" titleId="settings-title" description="Manage your business profile, local backups, and imported records." />
+    {error && <InlineNotice tone="danger" title="Settings action failed">{error}</InlineNotice>}
+    {startupWarning && <InlineNotice tone="warning" role="alert" title="Startup backup needs attention" action={<Button variant="secondary" disabled={busy} onClick={() => void createManualBackup()}>Create backup now</Button>}>{startupWarning}<span className="startup-recovery-copy">Create a manual backup to protect current data.</span></InlineNotice>}
+    {message && <InlineNotice tone="success" title={message} />}
+    <div className="settings-sections">
+      <Panel title="Business profile" className="settings-section" >
+        <Field label="Business name" htmlFor="business-name" hint="This name appears in your local business records."><input id="business-name" value={businessName} maxLength={120} onChange={(event) => setBusinessName(event.target.value)} /></Field>
+        <p className="settings-support-copy">Currency: PHP (₱). Time zone: Asia/Manila.</p>
+        <div className="form-actions"><Button variant="primary" disabled={busy || !businessName.trim()} busy={busy} onClick={() => void saveBusinessName()}>Save settings</Button></div>
+      </Panel>
+      <Panel title="Backups" className="settings-section">
+        <p>Automatic backups are stored once per Manila calendar day and the latest 30 are kept.</p>
+        <div className="backup-directory-row"><div className="backup-directory-copy"><span className="settings-label">Backup directory</span><span className="backup-directory-value" title={backupDirectory}>{backupDirectory || 'Loading backup directory…'}</span></div><Button variant="secondary" onClick={() => void chooseDirectory()}>Choose backup directory</Button></div>
+        <div className="settings-actions"><Button variant="primary" disabled={busy} busy={busy} onClick={() => void createManualBackup()}>{busy ? 'Creating backup…' : 'Create manual backup'}</Button></div>
+        <p className="last-backup-status" role="status">{lastBackupFile ? <>Last successful backup: <span title={lastBackupFile}>{lastBackupFile}</span></> : 'No manual backup created this session.'}</p>
+      </Panel>
+      <Panel title="Restore" className="settings-section settings-restore-section">
+        <p>Restore a local backup if you need to recover earlier business data. A safety backup is created first.</p>
+        <Button variant="danger" icon="archive" disabled={busy} onClick={(event) => { restoreTriggerRef.current = event.currentTarget; event.currentTarget.focus(); void chooseBackup(); }}>Restore from backup</Button>
+      </Panel>
+      <Panel title="Import data" className="settings-section">
+        <p>Bring products, opening stock, or supported spreadsheet records into this business.</p>
+        <Button variant="secondary" icon="import" onClick={() => onNavigate('Import')}>Open import data</Button>
+      </Panel>
+      <Panel title="About" className="settings-section">
+        <p>Siomai Inventory keeps this ledger and its backup files on this device.</p>
+        <p className="settings-support-copy">Offline desktop inventory · PHP (₱) · Asia/Manila</p>
+      </Panel>
+    </div>
+    <ConfirmDialog open={Boolean(selectedBackup)} title={`Restore ${selectedBackup?.fileName ?? 'backup'}?`} description="Current data will be protected with a safety backup before the selected database is restored." confirmLabel={busy ? 'Restoring…' : 'Restore backup'} busy={busy} onConfirm={() => void restore()} onCancel={() => { setSelectedBackup(null); setError(''); }}>
+      {selectedBackup && <p className="restore-filename" title={selectedBackup.fileName}>{selectedBackup.fileName}</p>}
+    </ConfirmDialog>
+  </main>;
 }

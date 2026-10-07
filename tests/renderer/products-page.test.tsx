@@ -14,6 +14,8 @@ const product: CatalogProduct = {
   sellingPricePerPackCentavos: 900, lowStockThresholdPieces: 7, isActive: true,
 };
 
+const archivedProduct: CatalogProduct = { ...product, id: 'rice', sku: 'RICE', name: 'Premium Jasmine Rice', isActive: false };
+
 function makeApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
   return {
     listProducts: vi.fn().mockResolvedValue([product]), saveProduct: vi.fn().mockResolvedValue(product),
@@ -23,6 +25,54 @@ function makeApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
 }
 
 describe('ProductsPage', () => {
+  it('searches and filters active and archived products from the complete catalog', async () => {
+    const api = makeApi({ listProducts: vi.fn().mockResolvedValue([product, archivedProduct]) });
+    render(<ProductsPage api={api} />);
+
+    expect(await screen.findByText('Siomai Pork')).toBeInTheDocument();
+    expect(screen.queryByText('Premium Jasmine Rice')).not.toBeInTheDocument();
+    expect(api.listProducts).toHaveBeenCalledWith({ includeArchived: true });
+
+    fireEvent.change(screen.getByRole('searchbox', { name: /search products/i }), { target: { value: 'rice' } });
+    fireEvent.click(screen.getByRole('radio', { name: /archived/i }));
+    expect(screen.getByText('Premium Jasmine Rice')).toBeInTheDocument();
+    expect(screen.queryByText('Siomai Pork')).not.toBeInTheDocument();
+  });
+
+  it('displays peso form values and saves exact centavos', async () => {
+    const api = makeApi();
+    render(<ProductsPage api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+
+    const cost = screen.getByRole('spinbutton', { name: /purchase cost per pack.*pesos/i });
+    const piecePrice = screen.getByRole('spinbutton', { name: /selling price per piece.*pesos/i });
+    expect(cost).toHaveValue(10);
+    expect(piecePrice).toHaveValue(1);
+    fireEvent.change(cost, { target: { value: '10.05' } });
+    fireEvent.change(piecePrice, { target: { value: '1.07' } });
+    fireEvent.click(screen.getByRole('button', { name: /save product/i }));
+
+    await waitFor(() => expect(api.saveProduct).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'pork',
+      purchaseCostPerPackCentavos: 1005,
+      sellingPricePerPieceCentavos: 107,
+    })));
+  });
+
+  it('keeps long product names available accessibly and confirms archive before acting', async () => {
+    const longName = ('Siomai ' + 'Premium '.repeat(16)).trim();
+    const longProduct = { ...product, name: longName };
+    const api = makeApi({ listProducts: vi.fn().mockResolvedValue([longProduct]) });
+    render(<ProductsPage api={api} />);
+    const name = await screen.findByLabelText(longName);
+    expect(name).toHaveAttribute('title', longName);
+
+    fireEvent.click(screen.getByRole('button', { name: `Archive ${longName}` }));
+    expect(await screen.findByRole('dialog', { name: new RegExp(longName) })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(api.archiveProduct).not.toHaveBeenCalled();
+  });
+
   it('preloads and preserves the configured piece threshold when editing a product', async () => {
     const api = makeApi();
     render(<ProductsPage api={api} />);
@@ -39,6 +89,7 @@ describe('ProductsPage', () => {
   it('requires a nonnegative whole-piece low-stock threshold', async () => {
     const api = makeApi();
     render(<ProductsPage api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /add product/i }));
     const threshold = await screen.findByRole('spinbutton', { name: /low-stock threshold/i });
     fireEvent.change(threshold, { target: { value: '-1' } });
     fireEvent.click(screen.getByRole('button', { name: /save product/i }));

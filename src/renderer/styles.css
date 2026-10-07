@@ -509,6 +509,58 @@ h1 { margin-bottom: 0; font-family: var(--font-display); font-size: 34px; font-w
 .import-errors strong { font-family: ui-monospace, SFMono-Regular, monospace; }
 .reports-page .page-heading > div:last-child { align-items: flex-end; }
 .reports-page .page-heading .form-field { margin: 0; }
+
+/* Catalog and settings pages */
+.redesigned-catalog-page { display: grid; gap: var(--space-5); min-width: 0; }
+.redesigned-catalog-page > .page-header { margin-bottom: 0; }
+.redesigned-catalog-page > .inline-notice { margin: 0; }
+.catalog-editor, .catalog-list-panel, .location-editor, .location-summary-panel, .settings-section { min-width: 0; }
+.catalog-editor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.catalog-editor-actions { grid-column: 1 / -1; justify-content: flex-start; margin-top: 0; }
+.catalog-form-error { grid-column: 1 / -1; }
+.catalog-filters { display: flex; align-items: end; flex-wrap: wrap; gap: var(--space-3); min-width: 0; }
+.catalog-search { display: grid; gap: 5px; min-width: 190px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.catalog-search input { width: 100%; min-height: 40px; padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--paper); color: var(--ink); }
+.visibility-filter { display: flex; gap: var(--space-3); align-items: center; min-height: 40px; margin: 0; padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius-control); }
+.visibility-filter legend { float: left; padding: 0 5px; color: var(--muted); font-size: 11px; }
+.visibility-filter label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.visibility-filter input { accent-color: var(--leaf); }
+.catalog-row-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-1); }
+.catalog-row-actions .ui-button { min-height: 36px; padding: 6px 9px; }
+.catalog-data-table .data-table { min-width: 820px; }
+.catalog-data-table .data-table th:nth-child(n+3), .catalog-data-table .data-table td:nth-child(n+3) { white-space: nowrap; }
+.catalog-long-name { display: block; min-width: 120px; max-width: 260px; white-space: normal; overflow-wrap: anywhere; }
+.archived-label { color: var(--muted); font-size: 12px; font-weight: 650; }
+.location-editor .panel-body, .settings-section .panel-body { display: grid; gap: var(--space-3); }
+.location-form-error { margin-top: var(--space-3); }
+.location-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: var(--space-3); }
+.location-summary-card { min-width: 0; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--rice-paper); }
+.location-summary-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.location-summary-heading > div:first-child { display: grid; gap: var(--space-2); min-width: 0; }
+.location-summary-heading h2 { margin: 0; font-family: var(--font-display); font-size: 18px; overflow-wrap: anywhere; }
+.location-summary-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin: var(--space-4) 0 0; }
+.location-summary-metrics dt { color: var(--muted); font-size: 11px; }
+.location-summary-metrics dd { margin: 4px 0 0; font-family: var(--font-display); font-size: 22px; font-variant-numeric: tabular-nums; }
+.dialog-long-name { overflow-wrap: anywhere; }
+.settings-page { align-content: start; }
+.settings-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.settings-section .panel-header { padding-bottom: var(--space-3); }
+.settings-section .panel-body { align-content: start; }
+.settings-section p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.settings-support-copy { color: var(--muted); font-size: 12px; }
+.settings-label { display: block; color: var(--muted); font-size: 11px; font-weight: 650; }
+.backup-directory-row { display: flex; align-items: end; justify-content: space-between; gap: var(--space-3); min-width: 0; }
+.backup-directory-copy { display: grid; gap: 5px; min-width: 0; }
+.backup-directory-value, .restore-filename { overflow-wrap: anywhere; word-break: break-word; }
+.backup-directory-value { color: var(--ink); font-family: var(--font-mono); font-size: 12px; }
+.settings-actions { display: flex; gap: var(--space-2); }
+.last-backup-status { padding: var(--space-3); border-radius: var(--radius-sm); background: var(--success-surface); color: var(--ink) !important; overflow-wrap: anywhere; }
+.last-backup-status span { font-family: var(--font-mono); }
+.settings-restore-section { border-color: #E6B5A9; }
+.settings-restore-section .panel-header { border-bottom-color: #E6B5A9; }
+.restore-filename { margin: 0; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--steam); color: var(--ink) !important; font-family: var(--font-mono); font-size: 12px !important; }
+.startup-recovery-copy { display: block; margin-top: var(--space-1); }
+
 @media (max-width: 980px) { .sale-layout { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .import-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); } .import-mapping-grid { grid-template-columns: 1fr; } .reports-page .page-heading > div:last-child { align-items: flex-start; flex-wrap: wrap; } }
 @media (max-width: 980px) { .stock-workflow-layout { grid-template-columns: 1fr; } .workflow-summary { position: static; } }
@@ -539,6 +591,12 @@ h1 { margin-bottom: 0; font-family: var(--font-display); font-size: 34px; font-w
   .dashboard-heading { align-items: flex-start; flex-direction: column; }
   .metric-grid, .report-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .inventory-context-row { grid-template-columns: 1fr; }
+  .settings-sections, .catalog-editor-grid { grid-template-columns: 1fr; }
+  .catalog-editor-actions, .catalog-form-error { grid-column: 1; }
+  .catalog-filters, .backup-directory-row { align-items: stretch; flex-direction: column; }
+  .catalog-search { min-width: 0; }
+  .location-summary-heading { flex-direction: column; }
+  .settings-section .panel-body, .catalog-list-panel .panel-header { align-items: stretch; }
 }
 
 @media print {

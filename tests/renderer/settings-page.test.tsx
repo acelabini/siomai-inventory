@@ -26,7 +26,7 @@ describe('SettingsPage', () => {
     render(<SettingsPage api={settingsApi({ saveSettings })} onNavigate={vi.fn()} />);
     const businessName = await screen.findByLabelText(/business name/i);
     expect(businessName).toHaveValue('Cart ni Ate');
-    expect(screen.getByText(/PHP.*Asia\/Manila|Asia\/Manila.*PHP/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/PHP.*Asia\/Manila|Asia\/Manila.*PHP/i).length).toBeGreaterThan(0);
     fireEvent.change(businessName, { target: { value: '  Cart ni Bunso  ' } });
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
     await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ businessName: 'Cart ni Bunso' }));
@@ -38,14 +38,26 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('button', { name: /create backup now/i })).toBeEnabled();
   });
 
+  it('organizes the five settings sections and reports the backup destination', async () => {
+    render(<SettingsPage api={settingsApi()} onNavigate={vi.fn()} />);
+    expect(await screen.findByRole('heading', { name: 'Business profile' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Backups' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Restore' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Import data' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument();
+    expect(screen.getByText('/backups')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /import data/i })).toBeInTheDocument();
+  });
+
   it('lets the operator choose a backup directory and create a manual backup', async () => {
     const services = settingsApi();
     render(<SettingsPage api={services} onNavigate={vi.fn()} />);
     await screen.findByText('/backups');
     fireEvent.click(screen.getByRole('button', { name: /choose backup directory/i }));
     await screen.findByText('/new-backups');
-    fireEvent.click(screen.getByRole('button', { name: /create backup now/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create manual backup/i }));
     expect(await screen.findByText(/manual-2026-10-08\.sqlite/i)).toBeInTheDocument();
+    expect(screen.getByText(/last successful backup/i)).toBeInTheDocument();
     expect(services.chooseBackupDirectory).toHaveBeenCalledOnce();
     expect(services.createManualBackup).toHaveBeenCalledOnce();
   });
@@ -76,6 +88,29 @@ describe('SettingsPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(services.restoreBackup).not.toHaveBeenCalled();
     expect(services.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it('cancels restore with Escape and restores focus to the restore action', async () => {
+    const services = settingsApi();
+    render(<SettingsPage api={services} onNavigate={vi.fn()} />);
+    const trigger = await screen.findByRole('button', { name: /restore from backup/i });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog');
+    expect(screen.getByRole('button', { name: /^cancel$/i })).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+    expect(services.restoreBackup).not.toHaveBeenCalled();
+    expect(dialog).not.toBeInTheDocument();
+  });
+
+  it('keeps a long backup filename accessible inside the restore dialog', async () => {
+    const fileName = `${'very-long-backup-name-'.repeat(8)}2026-10-08.sqlite`;
+    const services = settingsApi({ chooseBackupFile: vi.fn().mockResolvedValue({ token: 'restore-token-long', fileName }) });
+    render(<SettingsPage api={services} onNavigate={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /restore from backup/i }));
+    expect(await screen.findByRole('dialog', { name: new RegExp(fileName) })).toBeInTheDocument();
+    expect(screen.getByText(fileName)).toHaveAttribute('title', fileName);
   });
 
   it('does not request relaunch when the main-process confirmation is denied', async () => {

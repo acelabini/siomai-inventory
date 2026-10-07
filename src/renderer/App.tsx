@@ -53,7 +53,7 @@ export default function App({ api = getInventoryApi() }: { api?: InventoryApi } 
   let page;
   if (view === 'Sales') page = <SalesPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} />;
   else if (view === 'Products') page = <ProductsPage api={api} />;
-  else if (view === 'Locations') page = <LocationsPage api={api} />;
+  else if (view === 'Locations') page = <LocationsPage api={api} activeLocationId={locationId} />;
   else if (view === 'Inventory') page = <InventoryPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} onNavigate={setView} />;
   else if (view === 'Replenish') page = <ReplenishPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} />;
   else if (view === 'Transfers') page = <TransfersPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} />;
