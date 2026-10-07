@@ -29,6 +29,11 @@ export default function ReplenishPage({ api = getInventoryApi(), activeLocationI
   const selectedLocationId = activeLocationId ?? locationId;
   const updateLocation = (value: string) => activeLocationId === undefined ? setLocationId(value) : onLocationChange?.(value);
   const [lines, setLines] = useState<Line[]>([blankLine()]);
+  const selectedProductKey = lines.map((line) => line.productId).join('\u0000');
+  const [balanceRevision, setBalanceRevision] = useState(0);
+  const [loadedBalanceKey, setLoadedBalanceKey] = useState('');
+  const balanceRequestKey = `${selectedLocationId}\u0000${selectedProductKey}\u0000${balanceRevision}`;
+  const balancesReady = Boolean(selectedLocationId) && loadedBalanceKey === balanceRequestKey;
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -45,11 +50,15 @@ export default function ReplenishPage({ api = getInventoryApi(), activeLocationI
   }, [api]);
 
   useEffect(() => {
+    setBalances([]);
+    setLoadedBalanceKey('');
     if (!selectedLocationId) return;
     let active = true;
-    void api.getBalances(selectedLocationId).then((value) => { if (active) setBalances(value); }).catch(() => { if (active) setError('Current availability could not be loaded.'); });
+    void api.getBalances(selectedLocationId).then((value) => {
+      if (active) { setBalances(value); setLoadedBalanceKey(balanceRequestKey); }
+    }).catch(() => { if (active) setError('Current availability could not be loaded.'); });
     return () => { active = false; };
-  }, [api, selectedLocationId]);
+  }, [api, selectedLocationId, selectedProductKey, balanceRequestKey]);
 
   const previews = useMemo(() => lines.map((line) => linePreview(line, products)), [lines, products]);
   const totalCost = previews.reduce<number | null>((sum, preview) => sum === null || preview.cost === null ? null : sum + preview.cost, 0);
@@ -61,11 +70,11 @@ export default function ReplenishPage({ api = getInventoryApi(), activeLocationI
 
   async function submit() {
     setError(''); setSuccess('');
-    if (!valid || !selectedLocationId) { setError('Enter a positive quantity for each product and use each product once.'); return; }
+    if (!valid || !selectedLocationId || !balancesReady) { setError('Enter a positive quantity for each product, use each product once, and wait for current availability.'); return; }
     try {
       await api.recordReplenishment({ locationId: selectedLocationId, note: note.trim() || undefined, lines: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity), unit: line.unit })) });
       setLines([blankLine(products[0]?.id ?? '')]); setNote(''); setSuccess('Replenishment recorded.');
-      setBalances(await api.getBalances(selectedLocationId));
+      setBalanceRevision((revision) => revision + 1);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Replenishment could not be recorded.'); }
   }
 
@@ -77,12 +86,12 @@ export default function ReplenishPage({ api = getInventoryApi(), activeLocationI
         {locations.length > 0 && <LocationSelect locations={locations} value={selectedLocationId} onChange={updateLocation} />}
         {lines.map((line, index) => {
           const preview = previews[index];
-          const current = availability.get(line.productId) ?? 0;
+          const current = balancesReady ? availability.get(line.productId) ?? 0 : 0;
           return <fieldset className="stock-line" key={index}><legend>Product {index + 1}</legend>
             <label className="form-field">Product<select value={line.productId} onChange={(event) => updateLine(index, { productId: event.target.value })}>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
             <div className="quantity-row"><label className="form-field">Quantity<input aria-label="Quantity" type="number" min="0.01" step="any" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></label>
               <label className="form-field">Unit<select aria-label="Unit" value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value as Line['unit'] })}><option value="piece">Piece</option><option value="pack">Pack</option></select></label></div>
-            <p className="availability-note">Available: {formatQuantity(current, preview.product?.piecesPerPack ?? 1)}</p>
+            <p className="availability-note">{balancesReady ? `Available: ${formatQuantity(current, preview.product?.piecesPerPack ?? 1)}` : 'Loading current availability…'}</p>
             <p className="conversion-preview">{preview.pieces > 0 ? `Converts to ${preview.pieces} pieces` : 'Enter a quantity to preview pieces'}</p>
             {lines.length > 1 && <button className="text-button destructive" type="button" onClick={() => setLines((currentLines) => currentLines.filter((_, itemIndex) => itemIndex !== index))}>Remove line</button>}
           </fieldset>;
@@ -90,14 +99,14 @@ export default function ReplenishPage({ api = getInventoryApi(), activeLocationI
         {products.length > lines.length && <button className="secondary-button" type="button" onClick={() => setLines((current) => [...current, blankLine(products.find((product) => !current.some((line) => line.productId === product.id))?.id ?? '')])}>Add another product</button>}
         <label className="form-field">Note<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
         {error && <p role="alert" className="field-error">{error}</p>}{success && <p role="status" className="success-note">{success}</p>}
-        <button className="primary-button" type="submit" disabled={!valid || !selectedLocationId}>Record replenishment</button>
+        <button className="primary-button" type="submit" disabled={!valid || !selectedLocationId || !balancesReady}>Record replenishment</button>
       </form>
       <aside className="workflow-summary" aria-label="Replenishment summary"><p className="empty-kicker">CONFIRMATION</p><h2>Stock received</h2><dl><div><dt>Products</dt><dd>{lines.filter((line, index) => previews[index].pieces > 0).length}</dd></div><div><dt>Total pieces</dt><dd>{previews.reduce((sum, preview) => sum + preview.pieces, 0)}</dd></div><div><dt>Total cost</dt><dd>{totalCost === null || !Number.isSafeInteger(totalCost) ? '—' : formatMoney(totalCost)}</dd></div></dl>
         <h3 className="summary-subheading">On hand after replenishment</h3>
         <ul className="balance-preview-list">{lines.map((line, index) => {
           const preview = previews[index];
           const current = availability.get(line.productId) ?? 0;
-          return <li key={line.productId || index}><span>{preview.product?.name ?? 'Select a product'}</span><strong>{formatQuantity(current + preview.pieces, preview.product?.piecesPerPack ?? 1)}</strong></li>;
+          return <li key={line.productId || index}><span>{preview.product?.name ?? 'Select a product'}</span><strong>{balancesReady ? formatQuantity(current + preview.pieces, preview.product?.piecesPerPack ?? 1) : '—'}</strong></li>;
         })}</ul>
         <p>Each line keeps the current purchase cost as a ledger snapshot.</p></aside>
     </div>

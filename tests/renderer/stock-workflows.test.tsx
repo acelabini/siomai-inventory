@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryApi } from '../../src/shared/contracts';
@@ -66,12 +66,37 @@ describe('stock workflow pages', () => {
     expect((screen.getByLabelText(/quantity/i) as HTMLInputElement).value).toBe('');
   });
 
-  it('previews the resulting on-hand balance for replenishment', async () => {
-    render(<ReplenishPage api={makeApi()} />);
+  it('waits for current balances before previewing or recording replenishment', async () => {
+    const pending: Array<{ locationId: string; resolve: (balances: InventoryBalance[]) => void }> = [];
+    const api = makeApi({ getBalances: vi.fn((locationId: string) => new Promise<InventoryBalance[]>((resolve) => pending.push({ locationId, resolve }))) });
+    render(<ReplenishPage api={api} />);
     await screen.findByRole('option', { name: 'Main Cart' });
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '1.5' } });
     fireEvent.change(screen.getByLabelText(/unit/i), { target: { value: 'pack' } });
+
+    expect(screen.getByText(/loading current availability/i)).toBeInTheDocument();
+    expect(screen.queryByText('99 pc (1 pack + 33 pc)')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /record replenishment/i })).toBeDisabled();
+    await waitFor(() => expect(pending).toHaveLength(1));
+    await act(async () => pending[0].resolve([{ locationId: 'main', productId: 'pork', quantityPieces: 132 }]));
     expect(screen.getByText('231 pc (3 packs + 33 pc)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /record replenishment/i })).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText(/product/i), { target: { value: 'beef' } });
+    expect(screen.getByText(/loading current availability/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /record replenishment/i })).toBeDisabled();
+    await waitFor(() => expect(pending).toHaveLength(2));
+    await act(async () => pending[1].resolve([{ locationId: 'main', productId: 'beef', quantityPieces: 12 }]));
+    expect(await screen.findByText('102 pc (1 pack + 42 pc)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /record replenishment/i })).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText(/^location$/i), { target: { value: 'branch' } });
+    expect(screen.getByText(/loading current availability/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /record replenishment/i })).toBeDisabled();
+    await waitFor(() => expect(pending).toHaveLength(3));
+    await act(async () => pending[2].resolve([{ locationId: 'branch', productId: 'beef', quantityPieces: 3 }]));
+    expect(await screen.findByText('93 pc (1 pack + 33 pc)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /record replenishment/i })).toBeEnabled();
   });
 
   it('rounds large replenishment costs in centavos with exact integer arithmetic', async () => {
