@@ -36,8 +36,16 @@ export function ConfirmDialog({ open, title, description, confirmLabel, cancelLa
     };
     const focusableControls = () => Array.from(dialog.querySelectorAll<HTMLElement>(
       'button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]',
-    )).filter((element) => element.tabIndex >= 0 && !element.closest('[hidden], [inert]')
-      && getComputedStyle(element).display !== 'none' && getComputedStyle(element).visibility !== 'hidden')
+    )).filter((element) => {
+      if (element.tabIndex < 0 || element.matches(':disabled, input[type="hidden"]') || element.closest('[hidden], [inert]')) return false;
+      const style = getComputedStyle(element);
+      if (style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+      for (let ancestor: HTMLElement | null = element; ancestor; ancestor = ancestor.parentElement) {
+        const ancestorStyle = getComputedStyle(ancestor);
+        if (ancestorStyle.display === 'none' || ancestorStyle.contentVisibility === 'hidden') return false;
+      }
+      return true;
+    })
       .sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {

@@ -10,6 +10,10 @@ import Field from '../../src/renderer/components/ui/Field';
 import ConfirmDialog from '../../src/renderer/components/ui/ConfirmDialog';
 import MetricCard from '../../src/renderer/components/MetricCard';
 import DataTable from '../../src/renderer/components/DataTable';
+import PageHeader from '../../src/renderer/components/ui/PageHeader';
+import { readFileSync } from 'node:fs';
+
+const rendererStyles = readFileSync('src/renderer/styles.css', 'utf8');
 
 afterEach(cleanup);
 
@@ -124,5 +128,67 @@ describe('accessible UI primitives', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onCancel).toHaveBeenCalledOnce();
     expect(onConfirm).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['disabled tabindex', <input key="disabled" aria-label="Unavailable" disabled tabIndex={0} />],
+    ['disabled fieldset', <fieldset key="fieldset" disabled><input aria-label="Unavailable" tabIndex={0} /></fieldset>],
+    ['display none ancestor', <div key="display" style={{ display: 'none' }}><input aria-label="Unavailable" /></div>],
+    ['visibility hidden ancestor', <div key="visibility" style={{ visibility: 'hidden' }}><input aria-label="Unavailable" /></div>],
+    ['hidden ancestor', <div key="hidden" hidden><input aria-label="Unavailable" /></div>],
+    ['inert ancestor', <div key="inert" inert><input aria-label="Unavailable" /></div>],
+  ])('skips %s controls when wrapping dialog focus', (_scenario, unavailable) => {
+    render(<ConfirmDialog open title="Confirm change" description="Review the action." confirmLabel="Confirm" onConfirm={vi.fn()} onCancel={vi.fn()}>
+      {unavailable}
+      <input aria-label="Available" />
+    </ConfirmDialog>);
+    const available = screen.getByRole('textbox', { name: 'Available' });
+    const confirm = screen.getByRole('button', { name: 'Confirm' });
+    confirm.focus();
+    fireEvent.keyDown(confirm, { key: 'Tab' });
+    expect(available).toHaveFocus();
+    fireEvent.keyDown(available, { key: 'Tab', shiftKey: true });
+    expect(confirm).toHaveFocus();
+  });
+
+  it('gives idle field borders and page eyebrows accessible contrast', () => {
+    const style = document.createElement('style');
+    style.textContent = rendererStyles;
+    document.head.append(style);
+    try {
+      render(<>
+        <PageHeader eyebrow="Stock operations" title="Replenish" titleId="contrast-title" />
+        <Field label="Quantity" htmlFor="contrast-quantity"><input id="contrast-quantity" /></Field>
+      </>);
+      const root = getComputedStyle(document.documentElement);
+      function resolveTokens(value: string): string {
+        return value.replace(/var\((--[\w-]+)\)/g, (_match, token: string) => {
+          return resolveTokens(root.getPropertyValue(token).trim());
+        });
+      }
+      // JSDOM does not resolve variables in CSS shorthands; apply resolved styles
+      // before checking the rendered controls' colors and contrast thresholds.
+      style.textContent = resolveTokens(rendererStyles);
+      function luminance(color: string): number {
+        const resolved = resolveTokens(color);
+        const channels = resolved.startsWith('#')
+          ? [1, 3, 5].map((offset) => parseInt(resolved.slice(offset, offset + 2), 16))
+          : resolved.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+        const linear = channels.map((value) => value / 255 <= .04045 ? value / 255 / 12.92 : ((value / 255 + .055) / 1.055) ** 2.4);
+        return linear[0] * .2126 + linear[1] * .7152 + linear[2] * .0722;
+      }
+      function contrast(foreground: string, background: string): number {
+        const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+        return (values[0] + .05) / (values[1] + .05);
+      }
+      const controlStyle = getComputedStyle(screen.getByRole('textbox', { name: 'Quantity' }));
+      expect.soft(contrast(controlStyle.borderTopColor, controlStyle.backgroundColor)).toBeGreaterThanOrEqual(3);
+      const eyebrowStyle = getComputedStyle(screen.getByText('Stock operations'));
+      for (const surface of ['--rice-paper', '--market-canvas']) {
+        expect.soft(contrast(eyebrowStyle.color, root.getPropertyValue(surface))).toBeGreaterThanOrEqual(4.5);
+      }
+    } finally {
+      style.remove();
+    }
   });
 });

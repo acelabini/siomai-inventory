@@ -19,7 +19,7 @@
   --bamboo: var(--turmeric);
   --muted: #59665D;
   --border: #CED4C9;
-  --border-strong: #929E91;
+  --border-strong: #7E8A7D;
   --surface-hover: #F5F6EF;
   --leaf-hover: #185438;
   --leaf-active: #123F2A;
@@ -239,7 +239,7 @@ button, a, input, select, textarea { font: inherit; }
 .ledger-page { max-width: 1240px; margin: 0 auto; padding: 36px 38px 52px; }
 
 .page-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 24px; }
-.eyebrow { margin: 0 0 7px; color: #777f77; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.eyebrow { margin: 0 0 7px; color: var(--muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
 h1, h2, p { margin-top: 0; }
 h1 { margin-bottom: 0; font-family: var(--font-display); font-size: 34px; font-weight: 650; letter-spacing: -0.025em; }
 
