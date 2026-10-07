@@ -18,6 +18,10 @@ assert.equal(metadata.name, 'siomai-inventory', 'Unexpected packaged app name.')
 assert.equal(metadata.productName, 'Siomai Inventory', 'Unexpected packaged product name.');
 assert.match(metadata.version, /^\d+\.\d+\.\d+$/, 'Packaged version must be a semantic release version.');
 assert.equal(metadata.main, '.vite/build/main.cjs', 'Unexpected packaged Electron entry point.');
+assert.ok(entries.some((entry) => normalizeEntry(entry) === 'node_modules/better-sqlite3/lib/index.js'), 'The packaged app is missing its SQLite runtime module.');
+const nativeModulePath = `node_modules/better-sqlite3/prebuilds/${process.platform}-${process.arch}.node`;
+assert.ok(entries.some((entry) => normalizeEntry(entry) === nativeModulePath), `The packaged app is missing ${nativeModulePath}.`);
+assert.ok(statSync(path.join(`${archivePath}.unpacked`, nativeModulePath), { throwIfNoEntry: false })?.isFile(), `The packaged native module ${nativeModulePath} is not unpacked.`);
 
 const rendererHtmlPath = entries.find((entry) => /(?:^|\/)\.vite\/renderer\/main_window\/index\.html$/.test(normalizeEntry(entry)));
 assert.ok(rendererHtmlPath, 'The packaged renderer HTML is missing.');

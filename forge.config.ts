@@ -5,6 +5,11 @@ import type { ForgeConfig } from '@electron-forge/shared-types';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    ignore: (file) => {
+      if (!file || file === '/node_modules') return false;
+      const runtimeModules = ['/node_modules/better-sqlite3', '/node_modules/node-addon-api'];
+      return !file.startsWith('/.vite') && !runtimeModules.some((modulePath) => file === modulePath || file.startsWith(`${modulePath}/`));
+    },
     appBundleId: 'com.siomai.inventory',
     appCategoryType: 'public.app-category.business',
     darwinDarkModeSupport: true,

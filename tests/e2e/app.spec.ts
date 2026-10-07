@@ -6,10 +6,16 @@ import { _electron as electron, type ElectronApplication, type Page } from 'play
 import type { InventoryApi } from '../../src/shared/contracts';
 
 let userData: string;
+let appDataPath: string;
 let exportPath: string;
+let launchCount = 0;
 let application: ElectronApplication;
 let page: Page;
 const appRoot = path.resolve(process.cwd());
+const appName = 'Siomai Inventory';
+const packagedExecutable = process.platform === 'darwin'
+  ? path.join(appRoot, 'out', `${appName}-darwin-${process.arch}`, `${appName}.app`, 'Contents', 'MacOS', appName)
+  : path.join(appRoot, 'out', `${appName}-${process.platform}-${process.arch}`, `${appName}${process.platform === 'win32' ? '.exe' : ''}`);
 const openingPieces = 500;
 const screenshots = path.join(appRoot, 'out', 'e2e-screenshots');
 test.setTimeout(120_000);
@@ -37,13 +43,19 @@ async function capture(name: string, width: number) {
 }
 
 async function launch(): Promise<ElectronApplication> {
+  launchCount += 1;
   return electron.launch({
-    args: [appRoot, '--no-sandbox', '--disable-gpu'],
+    executablePath: packagedExecutable,
+    args: [
+      '--no-sandbox', '--disable-gpu', '--disable-background-networking',
+      '--host-resolver-rules=MAP * ~NOTFOUND', '--proxy-server=127.0.0.1:9',
+      `--log-net-log=${path.join(userData, `startup-netlog-${launchCount}.json`)}`,
+    ],
     env: {
       ...process.env,
-      SIOMAI_E2E: '1',
-      SIOMAI_E2E_USER_DATA: userData,
-      SIOMAI_E2E_EXPORT_PATH: exportPath,
+      XDG_CONFIG_HOME: userData,
+      APPDATA: userData,
+      HOME: userData,
     },
     timeout: 30_000,
   });
@@ -58,10 +70,32 @@ async function bridge<T>(method: keyof InventoryApi, ...args: unknown[]): Promis
 
 test.beforeEach(async () => {
   userData = await mkdtemp(path.join(os.tmpdir(), 'siomai-e2e-'));
+  launchCount = 0;
   exportPath = path.join(userData, 'sales-report.csv');
   application = await launch();
+  expect(await application.evaluate(({ app }) => app.isPackaged)).toBe(true);
+  appDataPath = await application.evaluate(({ app }) => app.getPath('userData'));
+  expect(appDataPath.startsWith(userData)).toBe(true);
   page = await application.firstWindow();
   await expect(page.getByRole('heading', { name: 'Set up your business' })).toBeVisible();
+});
+
+test('loads packaged startup and renderer assets with remote hosts blocked', async () => {
+  expect(await application.evaluate(({ app }) => app.commandLine.getSwitchValue('host-resolver-rules'))).toContain('MAP * ~NOTFOUND');
+  expect(await application.evaluate(({ app }) => app.commandLine.getSwitchValue('proxy-server'))).toBe('127.0.0.1:9');
+  const requests: string[] = [];
+  page.on('request', (request) => requests.push(request.url()));
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Set up your business' })).toBeVisible();
+  expect(requests.some((url) => url.startsWith('file:'))).toBe(true);
+  expect(requests.filter((url) => /^https?:/i.test(url))).toEqual([]);
+  await application.close();
+  const netLog = JSON.parse(await readFile(path.join(userData, 'startup-netlog-1.json'), 'utf8')) as {
+    events: Array<{ params?: { url?: string } }>;
+  };
+  expect(netLog.events.length).toBeGreaterThan(0);
+  const remoteUrls = netLog.events.flatMap((event) => event.params?.url ?? []).filter((url) => /^https?:/i.test(url));
+  expect(remoteUrls.every((url) => /^https:\/\/redirector\.gvt1\.com\/edgedl\/chrome\/dict\/[^/]+\.bdic$/.test(url))).toBe(true);
 });
 
 test.afterEach(async () => {
@@ -132,6 +166,9 @@ test('completes setup, stock workflows, report export, restart, void, and manual
 
   await page.getByRole('button', { name: 'Reports' }).click();
   await page.getByLabel('Report type').selectOption('sales');
+  await application.evaluate(({ dialog }, destination) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: destination });
+  }, exportPath);
   await page.getByRole('button', { name: 'Export CSV' }).click();
   await expect(page.getByRole('status')).toContainText('CSV export saved.');
   await expect.poll(async () => readFile(exportPath, 'utf8')).toContain('grossProfit');
@@ -155,7 +192,7 @@ test('completes setup, stock workflows, report export, restart, void, and manual
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('button', { name: 'Create manual backup' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Manual backup created.' })).toBeVisible();
-  expect((await readdir(path.join(userData, 'backups'))).some((file) => file.startsWith('manual-') && file.endsWith('.sqlite'))).toBe(true);
+  expect((await readdir(path.join(appDataPath, 'backups'))).some((file) => file.startsWith('manual-') && file.endsWith('.sqlite'))).toBe(true);
   expect(await bridge('getSetupState')).toMatchObject({ complete: true, businessName: 'E2E Siomai Cart' });
 });
 
@@ -228,7 +265,7 @@ test('keeps pages and full names usable at wide, medium, and narrow desktop widt
   await expect(page.getByLabel('Business name')).toHaveValue(businessName);
   await page.getByRole('button', { name: 'Create manual backup' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Manual backup created.' })).toBeVisible();
-  const backupName = (await readdir(path.join(userData, 'backups'))).find((name) => name.startsWith('manual-'))!;
+  const backupName = (await readdir(path.join(appDataPath, 'backups'))).find((name) => name.startsWith('manual-'))!;
   await expect(page.getByText('Last successful backup:')).toContainText(backupName);
   await expect(page.getByText('Last successful backup:').locator('span')).toHaveAttribute('title', backupName);
   await assertNoDocumentOverflow();

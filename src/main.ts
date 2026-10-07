@@ -55,7 +55,7 @@ function createWindow(): void {
   }
 }
 
-if (process.versions.electron) {
+if (process.versions.electron && !process.env.ELECTRON_RUN_AS_NODE) {
   if (!app.isPackaged && process.env.SIOMAI_E2E === '1' && process.env.SIOMAI_E2E_USER_DATA) {
     app.setPath('userData', process.env.SIOMAI_E2E_USER_DATA);
   }
