@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardReport, InventoryApi } from '../../shared/contracts';
-import type { CatalogLocation } from '../../shared/schemas';
+import type { CatalogLocation, StockMovement } from '../../shared/schemas';
 import { getInventoryApi } from '../api';
 import DataTable from '../components/DataTable';
 import MetricCard from '../components/MetricCard';
@@ -24,6 +24,10 @@ type SharedFilter = { locationId: string; date: string; locations: CatalogLocati
 export type DashboardActivityItem = { id: string; kind: 'sale' | 'movement'; occurredAt: string; title: string; detail: string };
 const utcTimestamp = (value: string) => `${value.replace(' ', 'T')}Z`;
 const manilaDateTime = (value: string) => new Date(utcTimestamp(value)).toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
+const movementTitles: Record<StockMovement['movementType'], string> = {
+  opening_balance: 'Opening balance', replenishment: 'Replenishment', transfer_in: 'Transfer in',
+  transfer_out: 'Transfer out', count_adjustment: 'Count adjustment', sale: 'Sale', sale_void: 'Sale void',
+};
 
 export default function DashboardPage({ api = getInventoryApi(), onNavigate = () => undefined, filter, onFilterChange }: { api?: InventoryApi; onNavigate?: (page: string) => void; filter?: SharedFilter; onFilterChange?: (filter: { locationId: string; date: string }) => void }) {
   const [localLocations, setLocalLocations] = useState<CatalogLocation[]>([]);
@@ -56,7 +60,7 @@ export default function DashboardPage({ api = getInventoryApi(), onNavigate = ()
       if (!live) return;
       const items: DashboardActivityItem[] = [
         ...sales.map((sale): DashboardActivityItem => ({ id: `sale-${sale.id}`, kind: 'sale', occurredAt: sale.businessAt, title: sale.status === 'voided' ? 'Voided sale' : 'Completed sale', detail: `${peso(sale.totalCentavos)} · Sale ${sale.id.slice(0, 8)}` })),
-        ...movements.map((movement): DashboardActivityItem => ({ id: `movement-${movement.id}`, kind: 'movement', occurredAt: movement.occurredAt, title: movement.movementType.replaceAll('_', ' '), detail: `${movement.productName} · ${movement.quantityPieces} pc` })),
+        ...movements.map((movement): DashboardActivityItem => ({ id: `movement-${movement.id}`, kind: 'movement', occurredAt: movement.occurredAt, title: movementTitles[movement.movementType], detail: `${movement.productName} · ${movement.quantityPieces} pc` })),
       ];
       setActivity(items.sort((a, b) => new Date(utcTimestamp(b.occurredAt)).valueOf() - new Date(utcTimestamp(a.occurredAt)).valueOf()).slice(0, 4));
     }).catch(() => { if (live) setActivityError('Recent activity could not be loaded. Try loading the overview again.'); });

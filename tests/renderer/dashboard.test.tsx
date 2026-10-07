@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import type { InventoryApi } from '../../src/shared/contracts';
 import type { SaleSummary, StockMovement } from '../../src/shared/schemas';
 import App from '../../src/renderer/App';
@@ -96,6 +97,26 @@ describe('dashboard and reports', () => {
     expect(within(activity).queryByText(/Chicken/)).not.toBeInTheDocument();
     expect(api.listSales).toHaveBeenCalledWith({ locationId: 'main', limit: 4 });
     expect(api.getMovementHistory).toHaveBeenCalledWith({ locationId: 'main', limit: 4 });
+  });
+
+  it('keeps recent activity labels in sentence case without CSS capitalization', async () => {
+    const style = document.createElement('style');
+    style.textContent = readFileSync('src/renderer/styles.css', 'utf8');
+    document.head.append(style);
+    try {
+      const sale: SaleSummary = { id: 'completed', locationId: 'main', businessAt: '2026-10-06 16:30:00', totalCentavos: 12500, paymentCentavos: 12500, changeCentavos: 0, status: 'completed', note: null, lines: [] };
+      const movement: StockMovement = { id: 'transfer', locationId: 'main', productId: 'pork', productName: 'Pork', quantityPieces: 10, movementType: 'transfer_in', occurredAt: '2026-10-06 16:10:00', relatedEntityType: 'transfer', relatedEntityId: 'transfer', note: null, unitCostCentavos: null, lineCostCentavos: null };
+      render(<DashboardPage api={makeApi({
+        listSales: vi.fn().mockResolvedValue([sale, { ...sale, id: 'voided', status: 'voided', businessAt: '2026-10-06 16:20:00' }]),
+        getMovementHistory: vi.fn().mockResolvedValue([movement, { ...movement, id: 'count', movementType: 'count_adjustment', occurredAt: '2026-10-06 16:00:00' }]),
+      })} />);
+      const activity = await screen.findByRole('list', { name: 'Recent activity' });
+      const titles = within(activity).getAllByRole('listitem').map((entry) => entry.querySelector('.activity-title')!);
+      expect.soft(titles.map((title) => title.textContent)).toEqual(['Completed sale', 'Voided sale', 'Transfer in', 'Count adjustment']);
+      for (const title of titles) expect.soft(['', 'none']).toContain(getComputedStyle(title).textTransform);
+    } finally {
+      style.remove();
+    }
   });
 
   it('offers useful actions when there are no inventory rows', async () => {
