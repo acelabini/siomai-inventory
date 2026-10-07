@@ -8,6 +8,8 @@ const config: ForgeConfig = {
     ignore: (file) => {
       if (!file || file === '/node_modules') return false;
       const runtimeModules = ['/node_modules/better-sqlite3', '/node_modules/node-addon-api'];
+      // better-sqlite3 loads its bundled N-API prebuilds; its sources and node-gyp output are dead weight.
+      if (/^\/node_modules\/better-sqlite3\/(build|deps|src)(\/|$)/.test(file)) return true;
       return !file.startsWith('/.vite') && !runtimeModules.some((modulePath) => file === modulePath || file.startsWith(`${modulePath}/`));
     },
     appBundleId: 'com.siomai.inventory',
@@ -33,7 +35,10 @@ const config: ForgeConfig = {
         }
       : undefined,
   },
-  rebuildConfig: {},
+  rebuildConfig: {
+    // Rebuilding writes per-arch node-gyp output that breaks the universal macOS merge.
+    ignoreModules: ['better-sqlite3'],
+  },
   makers: [
     {
       name: '@electron-forge/maker-dmg',
