@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           npx electron-forge package --platform=darwin --arch=universal
-          APP_PATH="$(find out -type d -path '*/darwin-universal/Siomai Inventory.app' -prune -print -quit)"
+          APP_PATH="$(find out -type d -path '*-darwin-universal/Siomai Inventory.app' -prune -print -quit)"
           if [[ -z "$APP_PATH" ]]; then
             echo '::error::Universal app was not produced.'
             exit 1
