@@ -99,6 +99,25 @@ describe('dashboard and reports', () => {
     expect(api.getMovementHistory).toHaveBeenCalledWith({ locationId: 'main', limit: 4 });
   });
 
+  it('sorts and formats browser ISO activity alongside desktop UTC timestamps', async () => {
+    const api = makeApi({
+      listSales: vi.fn().mockResolvedValue([{ id: 'browser-sale', locationId: 'main', businessAt: '2026-10-06T16:30:00.000Z', totalCentavos: 12500, paymentCentavos: 12500, changeCentavos: 0, status: 'completed', note: null, lines: [] }]),
+      getMovementHistory: vi.fn().mockResolvedValue([
+        { id: 'old', locationId: 'main', productId: 'pork', productName: 'Older desktop stock', quantityPieces: 2, movementType: 'replenishment', occurredAt: '2026-10-06 15:40:00', relatedEntityType: null, relatedEntityId: null, note: null, unitCostCentavos: null, lineCostCentavos: null },
+        { id: 'new', locationId: 'main', productId: 'beef', productName: 'Newest browser stock', quantityPieces: 2, movementType: 'replenishment', occurredAt: '2026-10-06T16:50:00.000Z', relatedEntityType: null, relatedEntityId: null, note: null, unitCostCentavos: null, lineCostCentavos: null },
+      ]),
+    });
+    render(<DashboardPage api={api} />);
+    const activity = await screen.findByRole('list', { name: 'Recent activity' });
+    const entries = within(activity).getAllByRole('listitem');
+    expect(entries.map((entry) => entry.querySelector('time')?.getAttribute('dateTime'))).toEqual([
+      '2026-10-06T16:50:00.000Z', '2026-10-06T16:30:00.000Z', '2026-10-06T15:40:00Z',
+    ]);
+    expect(entries[0]).toHaveTextContent('Newest browser stock');
+    expect(entries[0].querySelector('time')).toHaveTextContent(/10\/7\/2026.*12:50.*AM/i);
+    expect(activity).not.toHaveTextContent('Invalid Date');
+  });
+
   it('keeps recent activity labels in sentence case without CSS capitalization', async () => {
     const style = document.createElement('style');
     style.textContent = readFileSync('src/renderer/styles.css', 'utf8');

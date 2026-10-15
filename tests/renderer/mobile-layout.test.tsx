@@ -112,6 +112,20 @@ it('retains table semantics, literal card labels, long values, and record action
   expect(edited).toBe(true);
 });
 
+it('keeps setup in one column after the final phone cascade', () => {
+  const style = document.createElement('style');
+  style.textContent = readFileSync('src/renderer/styles.css', 'utf8');
+  document.head.append(style);
+  try {
+    style.textContent = Array.from(style.sheet!.cssRules).flatMap((rule) => rule instanceof CSSMediaRule
+      ? rule.conditionText.match(/^\(max-width: (760|980|1100)px\)$/) ? Array.from(rule.cssRules).map((nested) => nested.cssText) : []
+      : [rule.cssText]).join('\n');
+    render(<div className="setup-page"><div className="setup-layout" data-testid="phone-setup-layout"><aside className="setup-welcome">Welcome</aside><div className="setup-panel"><div className="form-actions"><button>Back</button><button>Continue to opening stock</button></div></div></div></div>);
+    expect(getComputedStyle(screen.getByTestId('phone-setup-layout')).gridTemplateColumns).toBe('1fr');
+    expect(getComputedStyle(screen.getByRole('button', { name: 'Continue to opening stock' })).minHeight).toBe('44px');
+  } finally { style.remove(); }
+});
+
 it('applies touch targets and wrapping cards at the phone breakpoint with safe-area space', () => {
   const style = document.createElement('style');
   style.textContent = readFileSync('src/renderer/styles.css', 'utf8');

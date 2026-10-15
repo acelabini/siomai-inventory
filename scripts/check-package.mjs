@@ -11,9 +11,11 @@ assert.ok(archivePath, `No packaged app.asar was found at or below ${packageTarg
 
 const entries = listPackage(archivePath, { isPack: false });
 const normalizeEntry = (entry) => entry.replaceAll('\\', '/').replace(/^\/+/, '');
+// ASAR's filesystem lookup uses the host separator; portable matching above still uses '/'.
+const readEntry = (entry) => extractFile(archivePath, path.normalize(normalizeEntry(entry)));
 const metadataPath = entries.find((entry) => normalizeEntry(entry) === 'package.json');
 assert.ok(metadataPath, 'The packaged archive has no package.json metadata.');
-const metadata = JSON.parse(extractFile(archivePath, normalizeEntry(metadataPath)).toString('utf8'));
+const metadata = JSON.parse(readEntry(metadataPath).toString('utf8'));
 assert.equal(metadata.name, 'siomai-inventory', 'Unexpected packaged app name.');
 assert.equal(metadata.productName, 'Siomai Inventory', 'Unexpected packaged product name.');
 assert.match(metadata.version, /^\d+\.\d+\.\d+$/, 'Packaged version must be a semantic release version.');
@@ -25,7 +27,7 @@ assert.ok(statSync(path.join(`${archivePath}.unpacked`, nativeModulePath), { thr
 
 const rendererHtmlPath = entries.find((entry) => /(?:^|\/)\.vite\/renderer\/main_window\/index\.html$/.test(normalizeEntry(entry)));
 assert.ok(rendererHtmlPath, 'The packaged renderer HTML is missing.');
-const html = extractFile(archivePath, normalizeEntry(rendererHtmlPath)).toString('utf8');
+const html = readEntry(rendererHtmlPath).toString('utf8');
 const cspTag = html.match(/<meta\b(?=[^>]*http-equiv=["']Content-Security-Policy["'])[^>]*>/is)?.[0];
 const policy = cspTag?.match(/\bcontent="([^"]+)"/i)?.[1];
 assert.ok(policy, 'The packaged renderer has no explicit Content Security Policy.');
@@ -36,7 +38,7 @@ assert.doesNotMatch(policy, /https?:|unsafe-inline|unsafe-eval/i, 'Packaged Cont
 
 const searchable = entries
   .filter((entry) => /\.(?:html|js|cjs|mjs|json|css|map)$/i.test(entry))
-  .map((entry) => extractFile(archivePath, normalizeEntry(entry)));
+  .map(readEntry);
 const productionText = Buffer.concat(searchable).toString('utf8');
 assert.doesNotMatch(productionText, /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):\d+/i, 'A development server URL is present in the packaged app.');
 assert.doesNotMatch(productionText, /-----BEGIN (?:RSA |EC )?PRIVATE KEY-----/i, 'A private signing key is present in the packaged app.');
@@ -51,7 +53,7 @@ for (const name of secretEnvironmentNames) {
   if (secret && secret.length >= 6) {
     assert.ok(!productionText.includes(secret), `A value from ${name} was found in packaged text.`);
     for (const entry of entries) {
-      assert.ok(!extractFile(archivePath, normalizeEntry(entry)).includes(Buffer.from(secret)), `A value from ${name} was found in ${entry}.`);
+      assert.ok(!readEntry(entry).includes(Buffer.from(secret)), `A value from ${name} was found in ${entry}.`);
     }
   }
 }

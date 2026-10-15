@@ -653,6 +653,7 @@ h1 { margin-bottom: 0; font-family: var(--font-display); font-size: 34px; font-w
 
 @media (max-width: 760px) {
   html { scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .setup-layout { grid-template-columns: 1fr; }
   .app-shell { display: block; }
   .sidebar { display: none; }
   .workspace { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }

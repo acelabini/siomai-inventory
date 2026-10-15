@@ -47,12 +47,14 @@ async function launch(): Promise<ElectronApplication> {
   return electron.launch({
     executablePath: packagedExecutable,
     args: [
+      `--user-data-dir=${userData}`,
       '--no-sandbox', '--disable-gpu', '--disable-background-networking',
       '--host-resolver-rules=MAP * ~NOTFOUND', '--proxy-server=127.0.0.1:9',
       `--log-net-log=${path.join(userData, `startup-netlog-${launchCount}.json`)}`,
     ],
     env: {
       ...process.env,
+      SIOMAI_E2E_USER_DATA: userData,
       XDG_CONFIG_HOME: userData,
       APPDATA: userData,
       HOME: userData,
@@ -196,7 +198,7 @@ test('completes setup, stock workflows, report export, restart, void, and manual
   expect(await bridge('getSetupState')).toMatchObject({ complete: true, businessName: 'E2E Siomai Cart' });
 });
 
-test('keeps pages and full names usable at wide, medium, and narrow desktop widths', async () => {
+test('keeps pages and full names usable across desktop and mobile widths', async () => {
   const businessName = `Siomai cart ${'North market kiosk '.repeat(5)}`.slice(0, 118).trim();
   const locationName = `Main cart ${'Harbor entrance stall '.repeat(5)}`.slice(0, 118);
   const productName = `Special siomai ${'chili garlic family pack '.repeat(4)}`.slice(0, 118);
@@ -233,14 +235,25 @@ test('keeps pages and full names usable at wide, medium, and narrow desktop widt
   ] as const;
   for (const width of [1280, 980, 760]) {
     await page.setViewportSize({ width, height: 900 });
-    const railLabelWidth = await page.locator('.nav-link-label').first().evaluate((element) => element.getBoundingClientRect().width);
-    if (width === 1280) expect(railLabelWidth).toBeGreaterThan(1);
-    else expect(railLabelWidth).toBeLessThanOrEqual(1);
+    expect(await page.evaluate(() => innerWidth)).toBe(width);
+    const mobile = width <= 760;
+    const primary = page.getByRole('navigation', { name: mobile ? 'Mobile primary' : 'Primary', exact: true });
+    await expect(primary).toBeVisible();
+    if (!mobile) {
+      const railLabelWidth = await page.locator('.nav-link-label').first().evaluate((element) => element.getBoundingClientRect().width);
+      if (width === 1280) expect(railLabelWidth).toBeGreaterThan(1);
+      else expect(railLabelWidth).toBeLessThanOrEqual(1);
+    } else {
+      await expect(page.locator('.sidebar')).toBeHidden();
+    }
     for (const view of views) {
-      const nav = page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: view.nav });
+      const secondary = mobile && !['Overview', 'New sale', 'Inventory'].includes(view.nav);
+      if (secondary) await primary.getByRole('button', { name: 'More', exact: true }).click();
+      const nav = (secondary ? page.getByRole('dialog', { name: 'More destinations' }) : primary).getByRole('button', { name: view.nav, exact: true });
       await expect(nav).toBeVisible();
       await nav.click();
-      await expect(nav).toHaveAttribute('aria-current', 'page');
+      if (secondary) await expect(primary.getByRole('button', { name: 'More', exact: true })).toHaveAttribute('aria-current', 'true');
+      else await expect(nav).toHaveAttribute('aria-current', 'page');
       await expect(page.getByRole('heading', { name: view.heading, exact: true, level: 1 })).toBeVisible();
       await expect(page.getByRole('button', { name: view.action }).last()).toBeVisible();
       if (view.slug === 'new-sale') {
@@ -254,13 +267,16 @@ test('keeps pages and full names usable at wide, medium, and narrow desktop widt
       if (view.slug === 'inventory') {
         const table = page.locator('.data-table-scroll.inventory-table-wrap');
         await expect(table).toHaveAttribute('tabindex', '0');
-        expect(await table.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(width === 760);
+        expect(await table.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(false);
+        expect(await table.locator('table').evaluate((element) => getComputedStyle(element).display)).toBe(mobile ? 'block' : 'table');
       }
       await assertNoDocumentOverflow();
       if (width === 1280 || ['overview', 'new-sale', 'inventory', 'reports'].includes(view.slug)) await capture(view.slug, width);
     }
   }
 
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByRole('navigation', { name: 'Primary', exact: true })).toBeVisible();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByLabel('Business name')).toHaveValue(businessName);
   await page.getByRole('button', { name: 'Create manual backup' }).click();

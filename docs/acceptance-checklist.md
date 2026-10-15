@@ -2,7 +2,41 @@
 
 Release tag: __________  Version: __________  DMG SHA-256: __________
 
-This checklist must be completed on macOS 13 or later by the client or release maintainer with the client-owned Developer ID and notarization credentials. The Windows/WSL development run cannot sign, notarize, staple, assess Gatekeeper, or install a macOS DMG. Do not mark the client installer ready until all platform checks below have evidence attached to the release.
+The desktop sections must be completed on macOS 13 or later by the client or release maintainer with the client-owned Developer ID and notarization credentials. The Windows/WSL development run cannot sign, notarize, staple, assess Gatekeeper, or install a macOS DMG. Do not mark the client installer ready until those checks have evidence attached to the release. The independent mobile web release uses the separate checklist below and requires no Apple subscription.
+
+## Mobile web release — production HTTPS and physical iPhone
+
+Release/version: __________  HTTPS URL/path: __________  Device/iOS: __________
+
+Automated evidence is Chromium with an iPhone 14 viewport, not a claim of Safari hardware certification. The 2026-10-07 desktop evidence below predates the mobile layout; its 760px icon-rail description is historical. Current <=760px acceptance requires the bottom rail and More sheet.
+
+- [ ] `npm test` has no new failures; record the two known Windows SQLite restore baseline failures separately by name if present. Browser/unit/renderer coverage, typecheck, and lint pass.
+- [ ] `npm run build:web`, `npm run package`, and `npm run check:package` pass. `dist/web` contains the manifest, worker/runtime, icons, HTML, CSS, and JS assets.
+- [ ] `npm run test:e2e:web` passes against its own production build/server. Evidence includes setup, opening 100 pieces, setting price, sale of 2 pieces, receipt/history after reload, all More destinations, manifest, activated controlling worker, and a new offline page with the server stopped showing ₱50 sales and 98 pieces remaining.
+- [ ] The existing `npm run test:e2e` packaged Electron path is verified on its supported release host.
+- [ ] Publish the complete `dist/web` output on static HTTPS. Verify the actual root/subdirectory path, correct content types, worker scope, revalidation for HTML/worker/manifest, and matching hashed assets. No server-side application or database is deployed.
+- [ ] In normal iPhone Safari, load the hosted URL online completely and use Share → Add to Home Screen. Launch from its icon in a standalone window without an Apple Developer subscription.
+- [ ] Confirm the operator understands that this phone has independent data with no Mac/phone sync, and knows which device is the working ledger.
+- [ ] Complete setup, prices, opening stock, piece/pack sales, replenishment, transfer, count with discrepancy reason, reports, and sale void. Confirm stock and peso totals and Manila dates.
+- [ ] Verify Overview/New sale/Inventory/More, all eight More destinations, usable 44px touch targets, readable record cards, focus/dismissal behavior, and content clear of the phone's safe areas and Home indicator.
+- [ ] Close the app, enable airplane mode, reopen the Home Screen icon, and verify shell, stock, sales history/receipt, and a newly recorded offline operation persist through another reopening. First-ever offline installation is not supported.
+- [ ] Import a CSV from Files, preview validation, and commit valid data. Export a CSV and inspect the saved file. Check browser print if the operator uses it.
+- [ ] Create a manual JSON backup, confirm it exists in Files and in separate protected storage, and agree on end-of-day/before-update backup cadence. No automatic external backup is promised.
+- [ ] Export current data, restore a known-good JSON backup, confirm replacement and page reload, and check business/location/stock/sales. Reject invalid or incompatible input without losing current records. Explain that desktop SQLite backups use a different format.
+- [ ] Check the installation/storage guidance on Safari; if persistence is denied/unavailable, the warning points to backups and the operator understands it.
+- [ ] With existing ledger data, deploy a compatible update, load online, close all app windows/tabs, and reopen to activate it. Verify records survive and offline reopening still works. Do not clear website storage to update.
+
+Tested by/date: __________  Evidence and unresolved items: __________________
+
+### Current automated mobile evidence — 2026-10-15 (Windows, Node 22.23.3)
+
+- Browser/unit/renderer/PWA/package-check subset: **235 passed in 27 files**. Full suite: **317 passed, 2 failed in 39 files**. The only failures are the existing `BackupService` cases `takes a pre-restore safety backup and restores the selected backup atomically` and `restores committed content from a SQLite backup whose changes are still in its WAL` in `tests/integration/backup-service.test.ts`, both raising `BackupError` on Windows. The browser ledger tests pass.
+- Typecheck and lint pass. The production web build passes and precaches 12 app assets. Existing Zod comment-annotation and >500 kB bundle advisories remain.
+- `npm run test:e2e:web` passes its production journey, including a service-worker-served new page while offline and after the isolated preview server is stopped. Assertions cover ₱50.00 sales, 2 pieces sold, 98 remaining, persisted location, and valid activity dates. Screenshots are local artifacts under `out/e2e-web-results`.
+- Windows packaging and `npm run check:package` pass; the checker inspects 76 ASAR entries. Its regression exercises a real archive and subprocess, including native path separators. macOS metadata/signing/device checks are still required on the corresponding platform.
+- `npm run test:e2e` passes all **4 packaged Electron tests**: startup/network isolation, full business workflow and restart/void/backup, responsive pages at 1280/980/760px, keyboard navigation, and destructive-dialog cancellation. Its isolated launch uses `--user-data-dir`; narrow-screen assertions cover the mobile rail/More sheet and card tables.
+
+Physical iPhone Safari, deployed HTTPS, Add to Home Screen, hardware safe areas/VoiceOver, Files downloads/restore, and a real hosted update have not been certified by this Windows automation. Keep those device checklist items unchecked until evidence is recorded.
 
 ## Current development evidence — 2026-10-07 (WSL Ubuntu 22.04)
 
