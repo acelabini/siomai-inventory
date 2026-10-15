@@ -64,7 +64,7 @@ export type InventoryApi = {
   previewCsvImport(request: CsvImportRequest): Promise<ImportPreview>;
   commitCsvImport(input: CsvImportCommitInput): Promise<{ importedRows: number; aggregate: boolean }>;
   exportReportCsv(kind: 'profit' | 'sales' | 'movements' | 'valuation' | 'discrepancies' | 'low-stock', filter?: ReportFilter): Promise<boolean>;
-  getSettings(): Promise<{ businessName: string; backupDirectory: string; startupWarning?: string | null }>;
+  getSettings(): Promise<{ businessName: string; backupDirectory: string; startupWarning?: string | null; runtime?: 'desktop' | 'web'; automaticBackups?: boolean; storagePersistent?: boolean }>;
   saveSettings(input: UpdateSettingsInput): Promise<{ businessName: string }>;
   chooseBackupDirectory(): Promise<string | null>;
   createManualBackup(): Promise<{ fileName: string }>;

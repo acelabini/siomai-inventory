@@ -19,6 +19,8 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
   const [busy, setBusy] = useState(false);
   const [startupWarning, setStartupWarning] = useState('');
   const [lastBackupFile, setLastBackupFile] = useState('');
+  const [isWeb, setIsWeb] = useState(false);
+  const [storagePersistent, setStoragePersistent] = useState<boolean | undefined>();
   const restoreTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -28,6 +30,8 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
       setBusinessName(settings.businessName);
       setBackupDirectory(settings.backupDirectory);
       setStartupWarning(settings.startupWarning ?? '');
+      setIsWeb(settings.runtime === 'web');
+      setStoragePersistent(settings.storagePersistent);
     }).catch(() => { if (active) setError('Settings could not be loaded.'); });
     return () => { active = false; };
   }, [api]);
@@ -91,13 +95,14 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
         <div className="form-actions"><Button variant="primary" disabled={busy || !businessName.trim()} busy={busy} onClick={() => void saveBusinessName()}>Save settings</Button></div>
       </Panel>
       <Panel title="Backups" className="settings-section">
-        <p>Automatic backups are stored once per Manila calendar day and the latest 30 are kept.</p>
-        <div className="backup-directory-row"><div className="backup-directory-copy"><span className="settings-label">Backup directory</span><span className="backup-directory-value" title={backupDirectory}>{backupDirectory || 'Loading backup directory…'}</span></div><Button variant="secondary" onClick={() => void chooseDirectory()}>Choose backup directory</Button></div>
+        <p>{isWeb ? 'Export manual backups regularly and keep a copy in Files or another safe location. This browser cannot create automatic external backups.' : 'Automatic backups are stored once per Manila calendar day and the latest 30 are kept.'}</p>
+        {isWeb && storagePersistent === false && <InlineNotice tone="warning" title="Protect this ledger">Persistent storage was not granted. This browser may remove local data; export a backup regularly.</InlineNotice>}
+        {!isWeb && <div className="backup-directory-row"><div className="backup-directory-copy"><span className="settings-label">Backup directory</span><span className="backup-directory-value" title={backupDirectory}>{backupDirectory || 'Loading backup directory…'}</span></div><Button variant="secondary" onClick={() => void chooseDirectory()}>Choose backup directory</Button></div>}
         <div className="settings-actions"><Button variant="primary" disabled={busy} busy={busy} onClick={() => void createManualBackup()}>{busy ? 'Creating backup…' : 'Create manual backup'}</Button></div>
         <p className="last-backup-status" role="status">{lastBackupFile ? <>Last successful backup: <span title={lastBackupFile}>{lastBackupFile}</span></> : 'No manual backup created this session.'}</p>
       </Panel>
       <Panel title="Restore" className="settings-section settings-restore-section">
-        <p>Restore a local backup if you need to recover earlier business data. A safety backup is created first.</p>
+        <p>{isWeb ? 'Restore an exported JSON backup to replace this ledger. Export a manual backup of your current data first. The page reloads after restore.' : 'Restore a local backup if you need to recover earlier business data. A safety backup is created first.'}</p>
         <Button variant="danger" icon="archive" disabled={busy} onClick={(event) => { restoreTriggerRef.current = event.currentTarget; event.currentTarget.focus(); void chooseBackup(); }}>Restore from backup</Button>
       </Panel>
       <Panel title="Import data" className="settings-section">
@@ -106,10 +111,10 @@ export default function SettingsPage({ api = getInventoryApi(), onNavigate }: { 
       </Panel>
       <Panel title="About" className="settings-section">
         <p>Siomai Inventory keeps this ledger and its backup files on this device.</p>
-        <p className="settings-support-copy">Offline desktop inventory · PHP (₱) · Asia/Manila</p>
+        <p className="settings-support-copy">Offline {isWeb ? 'web' : 'desktop'} inventory · PHP (₱) · Asia/Manila</p>
       </Panel>
     </div>
-    <ConfirmDialog open={Boolean(selectedBackup)} title={`Restore ${selectedBackup?.fileName ?? 'backup'}?`} description="Current data will be protected with a safety backup before the selected database is restored." confirmLabel={busy ? 'Restoring…' : 'Restore backup'} busy={busy} onConfirm={() => void restore()} onCancel={() => { setSelectedBackup(null); setError(''); }}>
+    <ConfirmDialog open={Boolean(selectedBackup)} title={`Restore ${selectedBackup?.fileName ?? 'backup'}?`} description={isWeb ? 'This replaces your current ledger with the selected backup. Export your current data first if you need to keep it. The page will reload after restore.' : 'Current data will be protected with a safety backup before the selected database is restored.'} confirmLabel={busy ? 'Restoring…' : 'Restore backup'} busy={busy} onConfirm={() => void restore()} onCancel={() => { setSelectedBackup(null); setError(''); }}>
       {error && selectedBackup && <p className="field-error dialog-error" role="alert" tabIndex={0}>{error} You can retry the restore or cancel to leave existing data in place.</p>}
       {selectedBackup && <p className="restore-filename" title={selectedBackup.fileName}>{selectedBackup.fileName}</p>}
     </ConfirmDialog>

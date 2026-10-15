@@ -21,6 +21,15 @@ function settingsApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
 }
 
 describe('SettingsPage', () => {
+  it('describes web manual exports, storage durability and reload recovery truthfully', async () => {
+    render(<SettingsPage api={settingsApi({ getSettings: vi.fn().mockResolvedValue({ businessName: 'Cart', backupDirectory: '', runtime: 'web', automaticBackups: false, storagePersistent: false }) })} onNavigate={vi.fn()} />);
+    expect(await screen.findByText(/export manual backups/i)).toBeInTheDocument();
+    expect(screen.queryByText(/automatic backups are stored/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /choose backup directory/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/persistent storage.*not.*granted/i)).toBeInTheDocument();
+    expect(screen.queryByText(/safety backup is created first/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/offline web inventory/i)).toBeInTheDocument();
+  });
   it('edits the business name and displays fixed currency and timezone settings', async () => {
     const saveSettings = vi.fn().mockResolvedValue({ businessName: 'Cart ni Bunso' });
     render(<SettingsPage api={settingsApi({ saveSettings })} onNavigate={vi.fn()} />);
