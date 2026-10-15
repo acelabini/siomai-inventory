@@ -23,6 +23,8 @@ export class BrowserFileService implements Pick<InventoryApi, 'chooseCsvImportFi
   private readonly now: () => Date;
   private readonly previews = new Map<string, { hash: string; expires: number }>();
   private selection?: { token: string; backup: BrowserBackup; expires: number };
+  private restoringSelection?: NonNullable<BrowserFileService['selection']>;
+  private selectionRevision = 0;
   // Retained for this page's lifetime so a successful replacement still has a recoverable prior snapshot.
   private recoveryBackup?: BrowserBackup;
   private readonly catalog: BrowserCatalogService;
@@ -113,6 +115,7 @@ export class BrowserFileService implements Pick<InventoryApi, 'chooseCsvImportFi
     return { fileName };
   }
   async chooseBackupFile() {
+    this.selectionRevision++;
     this.selection = undefined;
     const file = await this.pick('.json,application/json');
     if (!file) return null;
@@ -125,18 +128,29 @@ export class BrowserFileService implements Pick<InventoryApi, 'chooseCsvImportFi
     return { token, fileName: file.name };
   }
   async restoreBackup(token: string) {
+    if (this.restoringSelection) throw new Error('A backup restore is already in progress.');
     const selection = this.selection;
     if (!selection || selection.token !== token || selection.expires <= this.now().valueOf()) throw new Error('The backup selection has expired. Select the backup again.');
     const backup = validateBrowserBackup(selection.backup);
-    await this.db.transaction('rw', this.db.tables, async () => {
-      if (this.selection !== selection) throw new Error('The backup selection has expired. Select the backup again.');
-      this.recoveryBackup = await snapshotBrowserBackup(this.db, this.now());
-      for (const name of browserTableNames) {
-        await this.db.table(name).clear();
-        await this.db.table(name).bulkAdd(backup.tables[name]);
-      }
-    });
+    const revision = this.selectionRevision;
+    // Claim before yielding: a queued IndexedDB transaction must not admit a second caller.
     this.selection = undefined;
+    this.restoringSelection = selection;
+    try {
+      await this.db.transaction('rw', this.db.tables, async () => {
+        this.recoveryBackup = await snapshotBrowserBackup(this.db, this.now());
+        for (const name of browserTableNames) {
+          await this.db.table(name).clear();
+          await this.db.table(name).bulkAdd(backup.tables[name]);
+        }
+      });
+    } catch (cause) {
+      // Retry only this claimant; choosing another file supersedes its selection.
+      if (this.restoringSelection === selection && this.selectionRevision === revision) this.selection = selection;
+      throw cause;
+    } finally {
+      if (this.restoringSelection === selection) this.restoringSelection = undefined;
+    }
     this.previews.clear();
     return true;
   }

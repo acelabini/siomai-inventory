@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createBrowserInventoryApi } from '../../src/browser/browser-inventory-api';
+import type { BrowserBackup } from '../../src/browser/backup-format';
 import { createTestDatabase } from './test-database';
 
 describe('browser backup recovery', () => {
@@ -131,5 +132,106 @@ describe('browser backup recovery', () => {
     await expect(ledger.restoreBackup(first!.token)).rejects.toThrow(/expired/i);
     now = new Date('2026-10-15T00:05:00.000Z');
     await expect(ledger.restoreBackup(second!.token)).rejects.toThrow(/expired/i);
+  });
+  async function completedSaleLedger() {
+    const ledger = api();
+    const location = await ledger.saveLocation({ name: 'Main' });
+    const pork = await ledger.saveProduct({ sku: 'PORK', name: 'Pork', piecesPerPack: 10, purchaseCostPerPackCentavos: 1000, sellingPricePerPieceCentavos: 150, sellingPricePerPackCentavos: 1400, lowStockThresholdPieces: 0 });
+    const beef = await ledger.saveProduct({ ...pork, id: undefined, sku: 'BEEF', name: 'Beef' });
+    await ledger.setOpeningStock({ locationId: location.id, lines: [pork, beef].map((product) => ({ productId: product.id, quantity: 10, unit: 'piece' as const })) });
+    const sale = await ledger.completeSale({ locationId: location.id, paymentCentavos: 1000, lines: [
+      { productId: pork.id, quantity: 1, unit: 'piece' }, { productId: pork.id, quantity: 2, unit: 'piece' }, { productId: beef.id, quantity: 1, unit: 'piece' },
+    ] });
+    return { ledger, sale, location, pork, beef };
+  }
+  it.each(['changed-line-quantity', 'missing-sale-product', 'wrong-sale-quantity', 'duplicate-sale-movement', 'split-sale-movement', 'completed-with-void', 'voided-without-void', 'voided-missing-product', 'wrong-void-quantity', 'duplicate-void-movement', 'voided-without-sale'])('rejects %s before issuing a restore token and preserves the live ledger', async (mutation) => {
+    const { ledger, sale, pork, beef } = await completedSaleLedger();
+    await ledger.createManualBackup();
+    const backup: BrowserBackup = JSON.parse(await downloaded!.blob.text());
+    const movements = backup.tables.stockMovements;
+    const porkSale = movements.find((row) => row.movementType === 'sale' && row.productId === pork.id)!;
+    const beefSale = movements.find((row) => row.movementType === 'sale' && row.productId === beef.id)!;
+    if (mutation === 'changed-line-quantity') {
+      const line = backup.tables.saleLines.find((row) => row.saleId === sale.id && row.productId === pork.id && row.lineIndex === 0)!;
+      line.quantityPieces = 100;
+      line.enteredQuantity = '100';
+    }
+    if (mutation === 'missing-sale-product') movements.splice(movements.indexOf(beefSale), 1);
+    if (mutation === 'wrong-sale-quantity') porkSale.quantityPieces = -2;
+    if (mutation === 'duplicate-sale-movement') movements.push({ ...porkSale, id: crypto.randomUUID() });
+    if (mutation === 'split-sale-movement') {
+      porkSale.quantityPieces = -1;
+      movements.push({ ...porkSale, id: crypto.randomUUID(), quantityPieces: -2 });
+    }
+    const addVoid = (source: typeof porkSale, quantity = -source.quantityPieces) => movements.push({ ...source, id: crypto.randomUUID(), movementType: 'sale_void', relatedEntityType: 'sale_void', quantityPieces: quantity, unitCostCentavos: null, lineCostCentavos: null });
+    if (mutation === 'completed-with-void') addVoid(porkSale);
+    if (mutation.startsWith('voided-') || mutation.includes('void-')) backup.tables.sales[0].status = 'voided';
+    if (mutation === 'voided-missing-product') addVoid(porkSale);
+    if (mutation === 'wrong-void-quantity') { addVoid(porkSale, 2); addVoid(beefSale); }
+    if (mutation === 'duplicate-void-movement') { addVoid(porkSale); addVoid(beefSale); addVoid(porkSale); }
+    if (mutation === 'voided-without-sale') { movements.splice(movements.indexOf(porkSale), 1); addVoid(porkSale); addVoid(beefSale); }
+    // Preserve movement/balance equality so only operation reconciliation can reject these corruptions.
+    for (const balance of backup.tables.inventoryBalances) balance.quantityPieces = movements.filter((row) => row.locationId === balance.locationId && row.productId === balance.productId).reduce((sum, row) => sum + row.quantityPieces, 0);
+    selected = JSON.stringify(backup);
+    const before = await snapshot();
+    await expect(ledger.chooseBackupFile()).rejects.toThrow(/backup/i);
+    expect(await snapshot()).toEqual(before);
+  });
+  it('restores valid grouped repeated-product sales and voids exactly the sold pieces', async () => {
+    const { ledger, sale, location } = await completedSaleLedger();
+    await ledger.createManualBackup();
+    selected = await downloaded!.blob.text();
+    const choice = await ledger.chooseBackupFile();
+    expect(await ledger.restoreBackup(choice!.token)).toBe(true);
+    await ledger.voidSale(sale.id, 'Restored sale canceled');
+    expect((await ledger.getBalances(location.id)).map((row) => row.quantityPieces)).toEqual([10, 10]);
+    await ledger.createManualBackup();
+    selected = await downloaded!.blob.text();
+    const voidedChoice = await ledger.chooseBackupFile();
+    expect(await ledger.restoreBackup(voidedChoice!.token)).toBe(true);
+    expect((await ledger.getBalances(location.id)).map((row) => row.quantityPieces)).toEqual([10, 10]);
+  });
+  it('allows only one claimant when the same restore token is submitted concurrently', async () => {
+    const ledger = await populated();
+    await ledger.createManualBackup();
+    selected = await downloaded!.blob.text();
+    const choice = await ledger.chooseBackupFile();
+    const before = await snapshot();
+    const results = await Promise.allSettled([ledger.restoreBackup(choice!.token), ledger.restoreBackup(choice!.token)]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toEqual([{ status: 'fulfilled', value: true }]);
+    expect(results.filter((result) => result.status === 'rejected')).toEqual([expect.objectContaining({ reason: expect.any(Error) })]);
+    expect(await snapshot()).toEqual(before);
+  });
+  it('restores the failed claimant for retry without admitting a concurrent claimant', async () => {
+    const ledger = await populated();
+    await ledger.createManualBackup();
+    selected = await downloaded!.blob.text();
+    const choice = await ledger.chooseBackupFile();
+    const before = await snapshot();
+    const fail = () => { throw new Error('Simulated storage failure'); };
+    fixture.db.saleLines.hook('creating', fail);
+    const results = await Promise.allSettled([ledger.restoreBackup(choice!.token), ledger.restoreBackup(choice!.token)]);
+    fixture.db.saleLines.hook('creating').unsubscribe(fail);
+    expect(results.filter((result) => result.status === 'rejected' && /storage failure/.test(String(result.reason)))).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected' && /progress|expired/.test(String(result.reason)))).toHaveLength(1);
+    expect(await snapshot()).toEqual(before);
+    expect(await ledger.restoreBackup(choice!.token)).toBe(true);
+    await expect(ledger.restoreBackup(choice!.token)).rejects.toThrow(/expired/i);
+  });
+  it('does not overwrite a newer selection when the previous claimant fails', async () => {
+    const ledger = await populated();
+    await ledger.createManualBackup();
+    selected = await downloaded!.blob.text();
+    const first = await ledger.chooseBackupFile();
+    const fail = () => { throw new Error('Simulated storage failure'); };
+    fixture.db.saleLines.hook('creating', fail);
+    const restoring = ledger.restoreBackup(first!.token).then(() => null, (error: unknown) => error);
+    const second = await ledger.chooseBackupFile();
+    const failure = await restoring;
+    fixture.db.saleLines.hook('creating').unsubscribe(fail);
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).toMatch(/storage failure/i);
+    await expect(ledger.restoreBackup(first!.token)).rejects.toThrow(/expired/i);
+    expect(await ledger.restoreBackup(second!.token)).toBe(true);
   });
 });

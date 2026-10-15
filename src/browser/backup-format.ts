@@ -92,6 +92,20 @@ export function validateBrowserBackup(input: unknown): BrowserBackup {
     requireBackup(lines.length > 0 && lines.every((row, index) => row.lineIndex === index));
     requireBackup(lines.reduce((total, row) => total + BigInt(row.lineRevenueCentavos), 0n) === BigInt(sale.totalCentavos));
     requireBackup(BigInt(sale.paymentCentavos) - BigInt(sale.totalCentavos) === BigInt(sale.changeCentavos));
+    const quantities = new Map<string, bigint>();
+    for (const line of lines) quantities.set(line.productId, (quantities.get(line.productId) ?? 0n) + BigInt(line.quantityPieces));
+    const saleMovements = t.stockMovements.filter((row) => row.relatedEntityId === sale.id && row.relatedEntityType === 'sale');
+    const voidMovements = t.stockMovements.filter((row) => row.relatedEntityId === sale.id && row.relatedEntityType === 'sale_void');
+    requireBackup(saleMovements.length === quantities.size);
+    requireBackup(voidMovements.length === (sale.status === 'voided' ? quantities.size : 0));
+    for (const [productId, quantity] of quantities) {
+      const sold = saleMovements.filter((row) => row.productId === productId);
+      requireBackup(sold.length === 1 && sold[0].locationId === sale.locationId && sold[0].movementType === 'sale' && BigInt(sold[0].quantityPieces) === -quantity);
+      if (sale.status === 'voided') {
+        const restored = voidMovements.filter((row) => row.productId === productId);
+        requireBackup(restored.length === 1 && restored[0].locationId === sale.locationId && restored[0].movementType === 'sale_void' && BigInt(restored[0].quantityPieces) === quantity);
+      }
+    }
   }
   for (const row of t.replenishments) requireBackup(t.replenishmentLines.some((line) => line.replenishmentId === row.id));
   for (const row of t.stockCounts) requireBackup(t.stockCountLines.some((line) => line.stockCountId === row.id));
