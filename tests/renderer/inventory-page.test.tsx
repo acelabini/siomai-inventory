@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryApi } from '../../src/shared/contracts';
-import type { CatalogLocation, CatalogProduct } from '../../src/shared/schemas';
+import type { CatalogLocation, CatalogProduct, StockMovement } from '../../src/shared/schemas';
 import InventoryPage from '../../src/renderer/pages/InventoryPage';
 
 afterEach(cleanup);
@@ -28,6 +28,34 @@ function makeApi(overrides: Partial<InventoryApi> = {}): InventoryApi {
 }
 
 describe('inventory page', () => {
+  it('labels populated movement records without changing their order or content', async () => {
+    const note = 'MorningMarketDelivery'.repeat(12);
+    const movements: StockMovement[] = [
+      { id: 'newest', locationId: 'main', productId: 'pork', productName: 'Old pork label', quantityPieces: 12, movementType: 'replenishment', occurredAt: '2026-10-06 16:30:00', relatedEntityType: 'replenishment', relatedEntityId: 'receipt', note, unitCostCentavos: 14600, lineCostCentavos: 2655 },
+      { id: 'older', locationId: 'main', productId: 'archived', productName: 'Archived garlic siomai', quantityPieces: -2, movementType: 'sale', occurredAt: '2026-10-06 15:00:00', relatedEntityType: 'sale', relatedEntityId: 'sale', note: null, unitCostCentavos: 100, lineCostCentavos: 200 },
+    ];
+    render(<InventoryPage api={makeApi({ getMovementHistory: vi.fn().mockResolvedValue(movements) })} />);
+    const table = await screen.findByRole('table', { name: 'Recent stock movements' });
+    const rows = within(table).getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(2);
+    const newest = within(rows[0]);
+    expect(newest.getByRole('cell', { name: 'Oct 7, 2026, 12:30 AM' })).toHaveAttribute('data-label', 'When');
+    expect(newest.getByRole('cell', { name: 'Siomai Pork' })).toHaveAttribute('data-label', 'Product');
+    expect(newest.getByRole('cell', { name: 'replenishment' })).toHaveAttribute('data-label', 'Movement');
+    expect(newest.getByRole('cell', { name: '+12 pc' })).toHaveAttribute('data-label', 'Quantity');
+    expect(newest.getByRole('cell', { name: note })).toHaveAttribute('data-label', 'Note');
+    expect(within(rows[1]).getByRole('cell', { name: 'Archived garlic siomai' })).toHaveAttribute('data-label', 'Product');
+    expect(within(rows[1]).getByRole('cell', { name: '-2 pc' })).toHaveAttribute('data-label', 'Quantity');
+    expect(within(rows[1]).getByRole('cell', { name: '—' })).toHaveAttribute('data-label', 'Note');
+    expect(within(table).getByRole('columnheader', { name: 'Quantity' })).toHaveAttribute('scope', 'col');
+    expect(screen.queryByText('Old pork label')).not.toBeInTheDocument();
+  });
+
+  it('preserves the empty movement-history guidance', async () => {
+    render(<InventoryPage api={makeApi()} />);
+    expect(await screen.findByText('No stock movements at this location.')).toBeInTheDocument();
+  });
+
   it('searches product names and SKUs and filters low stock with explicit healthy and zero labels', async () => {
     render(<InventoryPage api={makeApi()} />);
     const table = await screen.findByRole('table', { name: 'Inventory' });

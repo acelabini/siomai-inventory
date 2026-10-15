@@ -671,6 +671,7 @@ h1 { margin-bottom: 0; font-family: var(--font-display); font-size: 34px; font-w
   .mobile-rail-button:focus-visible { outline-color: var(--turmeric); outline-offset: -3px; }
   button, .ui-button, .primary-button, .secondary-button, .catalog-row-actions .ui-button, .dashboard-empty .primary-button, .dashboard-empty .secondary-button { min-width: 44px; min-height: 44px; }
   input:not([type="radio"]):not([type="checkbox"]), select, textarea, .catalog-search input { min-height: 44px; min-width: 0; font-size: 16px; }
+  .form-field select, .form-field textarea, .form-field input:not([type="radio"]):not([type="checkbox"]) { min-width: 44px; min-height: 44px; font-size: 16px; }
   label:has(> input[type="radio"]), label:has(> input[type="checkbox"]) { min-width: 44px; min-height: 44px; }
   .visibility-filter { flex-wrap: wrap; }
   .form-actions, .settings-actions, .sale-line-footer { flex-wrap: wrap; }

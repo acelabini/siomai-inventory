@@ -122,6 +122,19 @@ it('applies touch targets and wrapping cards at the phone breakpoint with safe-a
     style.textContent = rules.flatMap((rule) => rule instanceof CSSMediaRule
       ? rule.conditionText.match(/^\(max-width: (760|980|1100)px\)$/) ? Array.from(rule.cssRules).map((nested) => nested.cssText) : []
       : [rule.cssText]).join('\n');
+    render(<div>
+      <label className="form-field">Inventory status<select defaultValue="all"><option value="all">All stock</option></select></label>
+      <label className="form-field compact-field">Report location<select defaultValue="cart"><option value="cart">Market Cart</option></select></label>
+      <label className="form-field">Report date<input type="date" defaultValue="2026-10-15" /></label>
+      <label className="form-field">Movement note<textarea /></label>
+      <label className="form-field">Keep selection<input type="checkbox" /></label>
+    </div>);
+    for (const name of ['Inventory status', 'Report location', 'Report date', 'Movement note']) {
+      const controlStyle = getComputedStyle(screen.getByLabelText(name));
+      expect.soft(parseFloat(controlStyle.minHeight)).toBeGreaterThanOrEqual(44);
+      expect.soft(parseFloat(controlStyle.minWidth)).toBeGreaterThanOrEqual(44);
+    }
+    expect(parseFloat(getComputedStyle(screen.getByLabelText('Keep selection')).minHeight) || 0).toBeLessThan(44);
     render(<><Harness /><div className="overview-page"><div className="overview-filters" data-testid="repeated-context">Page context</div></div><article className="metric-card" data-testid="quiet-metric">Sales</article><DataTable label="Phone cards" columns={[
       { key: 'name', label: 'Product', render: () => 'VeryLongProductName'.repeat(12) },
       { key: 'action', label: 'Actions', render: () => <button>Edit record</button> },
