@@ -107,3 +107,22 @@ function backgroundPixel(x, y, width, height) {
   return paper;
 }
 writeFileSync(path.join(assets, 'dmg-background.png'), png(1600, 1000, backgroundPixel));
+
+// Opaque full-bleed icons keep the artwork inside the maskable safe circle.
+function pwaIconPixel(x, y, size) {
+  x *= 1024 / size;
+  y *= 1024 / size;
+  for (const [cx, cy] of [[400, 442], [624, 442], [512, 626]]) {
+    if (inEllipse(x, y, cx, cy - 18, 100, 30)) return rgb('#F4E3BE');
+    if (inEllipse(x, y, cx, cy + 40, 125, 35)) return rgb('#B78B4A');
+    if (inEllipse(x, y, cx, cy, 132, 82)) return rgb('#E6C995');
+  }
+  if (inCircle(x, y, 512, 512, 334)) return rgb('#FFFEF8');
+  if (inCircle(x, y, 512, 512, 365)) return rgb('#D8DDD3');
+  return rgb('#1F6A49');
+}
+const pwaAssets = path.join(assets, 'pwa');
+mkdirSync(pwaAssets, { recursive: true });
+for (const [size, name] of [[192, 'icon-192.png'], [512, 'icon-512.png'], [180, 'apple-touch-icon.png']]) {
+  writeFileSync(path.join(pwaAssets, name), png(size, size, pwaIconPixel));
+}

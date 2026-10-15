@@ -14,6 +14,8 @@
     "test:vitest": "cross-env ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
     "test:e2e": "electron-forge package && playwright test tests/e2e/app.spec.ts --workers=1 --output=out/e2e-results",
     "assets:generate": "node scripts/create-assets.mjs",
+    "build:web": "vite build --config vite.web.config.ts",
+    "preview:web": "vite preview --config vite.web.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "package": "electron-forge package",
@@ -54,6 +56,7 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^6.4.1",
+    "vite-plugin-pwa": "^1.3.0",
     "vitest": "^5.0.3"
   }
 }

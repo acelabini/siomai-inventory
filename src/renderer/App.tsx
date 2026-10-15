@@ -15,6 +15,7 @@ import DashboardPage from './pages/DashboardPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
 import AppShell from './components/AppShell';
+import InstallNotice from './components/InstallNotice';
 import './styles.css';
 
 function manilaToday(): string {
@@ -62,5 +63,5 @@ export default function App({ api = getInventoryApi() }: { api?: InventoryApi } 
   else if (view === 'Import') page = <ImportPage api={api} onComplete={() => setView('Settings')} onBack={() => setView('Settings')} />;
   else if (view === 'Settings') page = <SettingsPage api={api} onNavigate={setView} />;
   else page = <DashboardPage api={api} onNavigate={setView} filter={{ locationId, date: businessDate, locations }} onFilterChange={(next) => { setLocationId(next.locationId); setBusinessDate(next.date); }} />;
-  return <AppShell page={view} onNavigate={setView} locations={locations} locationId={locationId} date={businessDate} onLocationChange={setLocationId} onDateChange={setBusinessDate}>{page}</AppShell>;
+  return <AppShell page={view} onNavigate={setView} locations={locations} locationId={locationId} date={businessDate} onLocationChange={setLocationId} onDateChange={setBusinessDate}><InstallNotice api={api} onNavigate={setView} />{page}</AppShell>;
 }
