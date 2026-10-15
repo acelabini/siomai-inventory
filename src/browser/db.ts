@@ -29,7 +29,7 @@ export class BrowserDatabase extends Dexie {
       products: 'id, &sku, name',
       inventoryBalances: '[locationId+productId], locationId, productId',
       openingStockRecords: '[locationId+productId], locationId, productId, recordedAt',
-      stockMovements: 'id, locationId, productId, movementType, occurredAt, [locationId+occurredAt], [productId+occurredAt], relatedEntityId',
+      stockMovements: 'id, locationId, productId, movementType, occurredAt, [locationId+productId], [locationId+occurredAt], [productId+occurredAt], relatedEntityId',
       replenishments: 'id, locationId, occurredAt, [locationId+occurredAt]',
       replenishmentLines: 'id, replenishmentId, productId, &[replenishmentId+productId]',
       transferBatches: 'id, fromLocationId, toLocationId, createdAt',

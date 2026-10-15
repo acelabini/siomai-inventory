@@ -9,6 +9,7 @@ export type StockMovementRecord = Omit<StockMovement, 'productName'> & { created
 export type ReplenishmentRecord = { id: string; locationId: string; occurredAt: string; note: string | null; createdAt: string };
 export type ReplenishmentLineRecord = {
   id: string; replenishmentId: string; productId: string; quantityPieces: number;
+  // unitCostCentavos snapshots the purchase price per pack; lineCostCentavos is the rounded piece-proportional cost.
   enteredUnit: 'piece' | 'pack'; enteredQuantity: string; unitCostCentavos: number; lineCostCentavos: number;
 };
 export type TransferBatchRecord = { id: string; fromLocationId: string; toLocationId: string; note: string | null; createdAt: string };
