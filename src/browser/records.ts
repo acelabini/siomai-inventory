@@ -24,7 +24,8 @@ export type SaleRecord = {
   changeCentavos: number; note: string | null; status: SaleStatus; createdAt: string;
 };
 export type SaleLineRecord = {
-  id: string; saleId: string; productId: string; quantityPieces: number; enteredUnit: 'piece' | 'pack';
+  // Zero-based entry order, independent of UUID primary-key ordering.
+  id: string; saleId: string; lineIndex: number; productId: string; quantityPieces: number; enteredUnit: 'piece' | 'pack';
   enteredQuantity: string; unitSellingPriceCentavos: number; unitCostCentavos: number;
   lineRevenueCentavos: number; lineCostCentavos: number;
 };
