@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createBrowserDatabase, deleteBrowserDatabase } from '../src/browser/db';
 import { createBrowserInventoryApi } from '../src/browser/browser-inventory-api';
 
@@ -56,11 +56,14 @@ describe('standalone PWA boundary', () => {
     const serviceWorkers = {
       getRegistration: async () => ({ waiting: { postMessage(message: { type: string }) { activated = message.type === 'SKIP_WAITING'; } } }),
       addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events),
     };
-    await activatePendingShell(serviceWorkers as unknown as ServiceWorkerContainer, () => { reloads++; });
+    const decision = activatePendingShell(serviceWorkers as unknown as ServiceWorkerContainer, () => { reloads++; });
+    await Promise.resolve();
     expect(activated).toBe(true);
     expect(reloads).toBe(0);
     events.dispatchEvent(new Event('controllerchange'));
+    await decision;
     expect(reloads).toBe(1);
     events.dispatchEvent(new Event('controllerchange'));
     expect(reloads).toBe(1);
@@ -74,5 +77,82 @@ describe('standalone PWA boundary', () => {
     await activatePendingShell({ getRegistration: async () => ({ waiting: null }), addEventListener: events.addEventListener.bind(events) } as unknown as ServiceWorkerContainer, () => { reloads++; });
     events.dispatchEvent(new Event('controllerchange'));
     expect(reloads).toBe(0);
+  });
+
+  it('keeps interaction gated during a deferred startup lookup and renders safely after no waiting worker is found', async () => {
+    const { bootstrapWebRenderer } = await import('../src/renderer/pwa-update');
+    let resolveRegistration!: (registration: { waiting: null }) => void;
+    const events = new EventTarget();
+    const serviceWorkers = { getRegistration: () => new Promise((resolve) => { resolveRegistration = resolve; }), addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) };
+    let interactive = false;
+    let reloads = 0;
+    const startup = bootstrapWebRenderer(serviceWorkers as unknown as ServiceWorkerContainer, () => { interactive = true; }, () => { reloads++; });
+    await Promise.resolve();
+    expect(interactive).toBe(false);
+    resolveRegistration({ waiting: null });
+    await startup;
+    expect(interactive).toBe(true);
+    events.dispatchEvent(new Event('controllerchange'));
+    expect(reloads).toBe(0);
+  });
+
+  it('keeps interaction gated through delayed startup activation and reloads before rendering', async () => {
+    const { bootstrapWebRenderer } = await import('../src/renderer/pwa-update');
+    let resolveRegistration!: (registration: unknown) => void;
+    const events = new EventTarget();
+    let activated = false;
+    let interactive = false;
+    let reloads = 0;
+    const serviceWorkers = { getRegistration: () => new Promise((resolve) => { resolveRegistration = resolve; }), addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) };
+    const startup = bootstrapWebRenderer(serviceWorkers as unknown as ServiceWorkerContainer, () => { interactive = true; }, () => { reloads++; });
+    expect(interactive).toBe(false);
+    resolveRegistration({ waiting: { postMessage() { activated = true; } } });
+    await Promise.resolve();
+    expect(activated).toBe(true);
+    expect(interactive).toBe(false);
+    events.dispatchEvent(new Event('controllerchange'));
+    await startup;
+    expect(reloads).toBe(1);
+    expect(interactive).toBe(false);
+    await bootstrapWebRenderer({ getRegistration: async () => ({ waiting: null }) } as unknown as ServiceWorkerContainer, () => { interactive = true; }, () => { reloads++; });
+    expect(interactive).toBe(true);
+  });
+
+  it('disarms a delayed startup decision before allowing interaction after its deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const { bootstrapWebRenderer } = await import('../src/renderer/pwa-update');
+      let resolveRegistration!: (registration: unknown) => void;
+      let interactive = false;
+      let reloads = 0;
+      let activated = false;
+      const startup = bootstrapWebRenderer({ getRegistration: () => new Promise((resolve) => { resolveRegistration = resolve; }) } as unknown as ServiceWorkerContainer, () => { interactive = true; }, () => { reloads++; });
+      await vi.advanceTimersByTimeAsync(5000);
+      await startup;
+      expect(interactive).toBe(true);
+      resolveRegistration({ waiting: { postMessage() { activated = true; } } });
+      await Promise.resolve();
+      expect(activated).toBe(false);
+      expect(reloads).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('removes the activation listener before exposing forms when activation stalls', async () => {
+    vi.useFakeTimers();
+    try {
+      const { bootstrapWebRenderer } = await import('../src/renderer/pwa-update');
+      const events = new EventTarget();
+      let interactive = false;
+      let reloads = 0;
+      const workers = { getRegistration: async () => ({ waiting: { postMessage() {} } }), addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) };
+      const startup = bootstrapWebRenderer(workers as unknown as ServiceWorkerContainer, () => { interactive = true; }, () => { reloads++; });
+      await Promise.resolve();
+      expect(interactive).toBe(false);
+      await vi.advanceTimersByTimeAsync(5000);
+      await startup;
+      expect(interactive).toBe(true);
+      events.dispatchEvent(new Event('controllerchange'));
+      expect(reloads).toBe(0);
+    } finally { vi.useRealTimers(); }
   });
 });
