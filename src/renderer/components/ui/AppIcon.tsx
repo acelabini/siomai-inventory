@@ -1,7 +1,7 @@
 import {
   Archive, ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Check, CheckCircle2,
   ChevronRight, CircleHelp, ClipboardCheck, FileChartColumn, FileUp, Info,
-  LayoutDashboard, LoaderCircle, MapPin, Package, Plus, Search, Settings,
+  LayoutDashboard, LoaderCircle, MapPin, MoreHorizontal, Package, Plus, Search, Settings,
   ShoppingBasket, TriangleAlert, Trash2, X,
 } from 'lucide-react';
 
@@ -32,6 +32,7 @@ const icons = {
   close: X,
   next: ChevronRight,
   loading: LoaderCircle,
+  more: MoreHorizontal,
 } as const;
 
 export type IconName = keyof typeof icons;

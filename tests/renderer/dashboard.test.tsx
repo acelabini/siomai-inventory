@@ -161,7 +161,7 @@ describe('dashboard and reports', () => {
     expect(screen.getByRole('complementary', { name: /main navigation/i })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
     expect(screen.getByRole('main')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Overview' }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Overview' }));
     await waitFor(() => expect(api.getDashboard).toHaveBeenLastCalledWith({ locationId: 'main', date: '2026-10-06' }));
   });
 

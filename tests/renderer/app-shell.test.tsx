@@ -39,7 +39,7 @@ describe('application shell', () => {
 
   it('maps Overview to the Dashboard view', () => {
     render(<ShellHarness initialPage="Reports" />);
-    const overview = screen.getByRole('button', { name: 'Overview' });
+    const overview = within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Overview' });
     expect(screen.getByRole('button', { name: 'Reports' })).toHaveAttribute('aria-current', 'page');
     fireEvent.click(overview);
     expect(screen.getByLabelText('Current view')).toHaveTextContent(/^Dashboard$/);
@@ -72,7 +72,7 @@ describe('application shell', () => {
     const location = screen.getByRole('combobox', { name: 'Current location' });
     fireEvent.change(location, { target: { value: 'long' } });
     fireEvent.click(screen.getByRole('button', { name: 'Reports' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Overview' }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Overview' }));
     expect(location).toHaveValue('long');
     expect(screen.getByRole('option', { name: longName, selected: true })).toBeInTheDocument();
     expect(location).toHaveAttribute('title', longName);

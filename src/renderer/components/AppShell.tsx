@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { CatalogLocation } from '../../shared/schemas';
 import AppIcon, { type IconName } from './ui/AppIcon';
 import Button from './ui/Button';
@@ -28,7 +29,52 @@ export default function AppShell({ page, onNavigate, locations, locationId, date
   onLocationChange: (locationId: string) => void; onDateChange: (date: string) => void; children: ReactNode;
 }) {
   const currentLocation = locations.find((location) => location.id === locationId);
-  return <div className="app-shell">
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetId = useId();
+  const sheetTitleId = useId();
+  const secondaryActive = navigationGroups.slice(1).some((group) => group.items.some((item) => item.view === page));
+
+  useLayoutEffect(() => {
+    if (!moreOpen) return;
+    const sheet = sheetRef.current!;
+    const trigger = moreRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const controls = () => Array.from(sheet.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+    const focusFirst = () => controls()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); setMoreOpen(false); }
+      if (event.key !== 'Tab') return;
+      const buttons = controls();
+      const first = buttons[0];
+      const last = buttons.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    const onFocus = (event: FocusEvent) => {
+      if (event.target instanceof Node && !sheet.contains(event.target)) focusFirst();
+    };
+    // A sheet opened on a phone must not leave the desktop shell inert after rotation/resizing.
+    const desktop = window.matchMedia?.('(min-width: 761px)');
+    const onDesktop = () => { if (desktop?.matches) setMoreOpen(false); };
+    desktop?.addEventListener('change', onDesktop);
+    focusFirst();
+    document.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('focusin', onFocus);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.removeEventListener('focusin', onFocus);
+      desktop?.removeEventListener('change', onDesktop);
+      document.body.style.overflow = previousOverflow;
+      if (trigger?.isConnected) trigger.focus();
+    };
+  }, [moreOpen]);
+
+  function navigate(view: string) { onNavigate(view); setMoreOpen(false); }
+
+  return <><div className="app-shell" inert={moreOpen || undefined}>
     <aside className="sidebar" aria-label="Main navigation">
       <div className="brand" title="Siomai Cart"><span className="brand-mark" aria-hidden="true">S</span><span className="brand-name">SIOMAI CART</span></div>
       <nav className="rail-navigation" aria-label="Primary">
@@ -54,5 +100,29 @@ export default function AppShell({ page, onNavigate, locations, locationId, date
       </header>
       {children}
     </main>
-  </div>;
+    <nav className="mobile-order-rail" aria-label="Mobile primary">
+      {navigationGroups[0].items.map((item) => <button key={item.view} type="button" className="mobile-rail-button"
+        aria-current={page === item.view ? 'page' : undefined} onClick={() => navigate(item.view)}>
+        <AppIcon name={item.icon} size={20} /><span>{item.label}</span>
+      </button>)}
+      <button ref={moreRef} type="button" className="mobile-rail-button" aria-haspopup="dialog" aria-expanded={moreOpen}
+        aria-controls={moreOpen ? sheetId : undefined} aria-current={secondaryActive ? 'true' : undefined} onClick={() => setMoreOpen(true)}>
+        <AppIcon name="more" size={20} /><span>More</span>
+      </button>
+    </nav>
+  </div>
+  {moreOpen && createPortal(<div className="mobile-sheet-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setMoreOpen(false); }}>
+    <div ref={sheetRef} id={sheetId} role="dialog" aria-modal="true" aria-labelledby={sheetTitleId} className="mobile-navigation-sheet">
+      <header className="mobile-sheet-heading"><h2 id={sheetTitleId}>More destinations</h2>
+        <Button variant="ghost" icon="close" aria-label="Close navigation" onClick={() => setMoreOpen(false)} />
+      </header>
+      <nav aria-label="More destinations">{navigationGroups.slice(1).map((group) => <section key={group.label} className="mobile-sheet-group" aria-label={group.label}>
+        <h3>{group.label}</h3>
+        <ul>{group.items.map((item) => <li key={item.view}><button type="button" aria-current={page === item.view ? 'page' : undefined} onClick={() => navigate(item.view)}>
+          <AppIcon name={item.icon} /><span>{item.label}</span>{page === item.view && <AppIcon name="check" size={16} />}
+        </button></li>)}</ul>
+      </section>)}</nav>
+    </div>
+  </div>, document.body)}
+  </>;
 }

@@ -61,6 +61,8 @@ describe('accessible UI primitives', () => {
     const table = screen.getByRole('table', { name: 'Stock discrepancies' });
     expect(within(table).getByRole('cell', { name: '0 pc' })).toBeInTheDocument();
     expect(within(table).getByRole('cell', { name: '−2 pc' })).toBeInTheDocument();
+    expect(within(table).getByRole('cell', { name: 'Pork' })).toHaveAttribute('data-label', 'Product');
+    expect(within(table).getByRole('cell', { name: '−2 pc' })).toHaveAttribute('data-label', 'Variance');
     expect(screen.getByRole('region', { name: 'Stock discrepancies' })).toHaveAttribute('tabindex', '0');
   });
 
