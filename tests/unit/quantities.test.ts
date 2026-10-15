@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describePieces, toPieces } from '../../src/main/domain/quantities';
+import { describePieces, toPieces } from '../../src/shared/quantities';
 
 describe('quantity conversion', () => {
   it('keeps piece entry as whole pieces', () => {

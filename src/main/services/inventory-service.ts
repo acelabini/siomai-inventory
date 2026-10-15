@@ -17,7 +17,7 @@ import {
   type TransferInput,
   type TransferReceipt,
 } from '../../shared/schemas';
-import { toPieces } from '../domain/quantities';
+import { toPieces } from '../../shared/quantities';
 
 export type InventoryErrorCode = 'INVALID_INPUT' | 'NOT_FOUND' | 'INSUFFICIENT_STOCK' | 'SAME_LOCATION' | 'DISCREPANCY_REASON_REQUIRED' | 'OPENING_STOCK_ALREADY_SET';
 

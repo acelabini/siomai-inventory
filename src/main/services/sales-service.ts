@@ -10,7 +10,7 @@ import {
   type SaleSummary,
   type SalesListQuery,
 } from '../../shared/schemas';
-import { toPieces } from '../domain/quantities';
+import { toPieces } from '../../shared/quantities';
 import { decimalQuantityPriceCentavos } from '../../shared/money';
 
 export type SalesErrorCode = 'INVALID_INPUT' | 'NOT_FOUND' | 'INSUFFICIENT_STOCK' | 'INSUFFICIENT_PAYMENT' | 'PRICE_NOT_SET' | 'ALREADY_VOIDED';

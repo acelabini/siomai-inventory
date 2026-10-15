@@ -10,7 +10,8 @@
   },
   "scripts": {
     "start": "electron-forge start",
-    "test": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
+    "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
+    "test:vitest": "cross-env ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
     "test:e2e": "electron-forge package && playwright test tests/e2e/app.spec.ts --workers=1 --output=out/e2e-results",
     "assets:generate": "node scripts/create-assets.mjs",
     "typecheck": "tsc --noEmit",
@@ -22,6 +23,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
+    "dexie": "^4.4.6",
     "lucide-react": "^1.52.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -43,8 +45,10 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.1.1",
+    "cross-env": "^10.1.0",
     "electron": "44.5.1",
     "eslint": "^9.39.0",
+    "fake-indexeddb": "^6.2.5",
     "globals": "^16.5.0",
     "jsdom": "^27.2.0",
     "typescript": "^5.9.3",
