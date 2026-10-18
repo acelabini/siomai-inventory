@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { DiscrepancyReport, InventoryApi, LowStockReport, MovementReport, ProfitReport, SalesReport, ValuationReport } from '../../shared/contracts';
 import type { CatalogLocation } from '../../shared/schemas';
 import { getInventoryApi } from '../api';
+import { utcTimestamp } from '../time';
 import DataTable from '../components/DataTable';
 import MetricCard from '../components/MetricCard';
 import Button from '../components/ui/Button';
@@ -18,7 +19,7 @@ function manilaToday(): string {
 }
 const peso = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount / 100);
 const signedPieces = (pieces: number) => `${pieces < 0 ? '−' : pieces > 0 ? '+' : ''}${Math.abs(pieces)} pc`;
-const manilaDateTime = (value: string) => new Date(`${value.replace(' ', 'T')}Z`).toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
+const manilaDateTime = (value: string) => new Date(utcTimestamp(value)).toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
 type SharedFilter = { locationId: string; date: string; locations: CatalogLocation[] };
 type ReportKind = 'profit' | 'sales' | 'movements' | 'valuation' | 'discrepancies' | 'low-stock';
 type ReportData = { sales: SalesReport; movements: MovementReport; valuation: ValuationReport; profit: ProfitReport; discrepancies: DiscrepancyReport; lowStock: LowStockReport };
@@ -59,7 +60,7 @@ function FocusedReport({ kind, data }: { kind: ReportKind; data: ReportData }) {
       {metrics([{ label: 'Movements', value: String(movements.movements.length) }, { label: 'Products moved', value: String(new Set(movements.movements.map((row) => row.productId)).size) }])}
       <Panel title="Stock movements" meta="Recorded stock changes for the selected date.">
         <DataTable label="Stock movement report" rows={movements.movements} rowKey={(row) => row.id} columns={[
-          { key: 'time', label: 'Time', render: (row) => new Date(`${row.occurredAt.replace(' ', 'T')}Z`).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila' }) },
+          { key: 'time', label: 'Time', render: (row) => new Date(utcTimestamp(row.occurredAt)).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila' }) },
           { key: 'product', label: 'Product', render: (row) => row.productName },
           { key: 'type', label: 'Movement', render: (row) => row.movementType.replaceAll('_', ' ') },
           { key: 'quantity', label: 'Pieces', numeric: true, render: (row) => row.quantityPieces },

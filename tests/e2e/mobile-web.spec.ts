@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { test } from './web-fixtures';
 
 // Removing IndexedDB writes, mobile navigation, or the precached shell must break this journey.
@@ -54,8 +55,59 @@ test('keeps a mobile ledger and its shell available after the production server 
   await expect(receipt).toContainText(saleId);
   await expect(receipt.locator('.receipt-totals')).toContainText('₱50.00');
   await rail.getByRole('button', { name: 'More', exact: true }).click();
+  await sheet.getByRole('button', { name: 'Stock count', exact: true }).click();
+  await expect(page.getByText('Expected on hand: 98 pc')).toBeVisible();
+  await page.getByLabel('Counted quantity').fill('97');
+  await page.getByLabel('Reason', { exact: true }).fill('One damaged');
+  await page.getByRole('button', { name: 'Submit stock count' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Stock count recorded.' })).toBeVisible();
+  await rail.getByRole('button', { name: 'More', exact: true }).click();
+  await sheet.getByRole('button', { name: 'Reports', exact: true }).click();
+  for (const [kind, tableName, timestampLabel] of [
+    ['sales', 'Sales report', 'Recorded at'], ['movements', 'Stock movement report', 'Time'],
+    ['discrepancies', 'Stock count discrepancies', 'Counted at'],
+  ]) {
+    await page.getByLabel('Report type').selectOption(kind);
+    const table = page.getByRole('table', { name: tableName, exact: true });
+    await expect(table).toBeVisible();
+    const times = table.locator(`[data-label="${timestampLabel}"]`);
+    await expect(times.first()).toContainText(/\d{1,2}:\d{2}:\d{2}/);
+    expect(await times.count()).toBeGreaterThan(0);
+    for (const time of await times.all()) await expect(time).not.toHaveText('Invalid Date');
+  }
+  await rail.getByRole('button', { name: 'More', exact: true }).click();
   await sheet.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Business name')).toHaveValue('Mobile E2E Cart');
+
+  // Invalid setup metadata must never reach confirmation or replace the usable ledger.
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Create manual backup', exact: true }).click();
+  const download = await downloadPromise;
+  const validBackup = await readFile((await download.path())!, 'utf8');
+  const invalidBackup = JSON.parse(validBackup);
+  invalidBackup.tables.settings.find((row: { key: string }) => row.key === 'setup_complete').value = 'false';
+  const invalidPicker = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Restore from backup', exact: true }).click();
+  await (await invalidPicker).setFiles({ name: 'incomplete-setup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(invalidBackup)) });
+  await expect(page.getByRole('alert')).toContainText(/backup.*inconsistent/i);
+  await expect(page.getByRole('button', { name: 'Restore backup', exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Today at a glance' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Daily inventory ledger' }).locator('[data-label="On hand"]')).toHaveText('97');
+  await rail.getByRole('button', { name: 'More', exact: true }).click();
+  await sheet.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByLabel('Business name')).toHaveValue('Mobile E2E Cart');
+  await page.getByLabel('Business name').fill('Changed after backup');
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Business name saved.' })).toBeVisible();
+  const validPicker = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Restore from backup', exact: true }).click();
+  await (await validPicker).setFiles({ name: 'valid-ledger.json', mimeType: 'application/json', buffer: Buffer.from(validBackup) });
+  await page.getByRole('button', { name: 'Restore backup', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Today at a glance' })).toBeVisible();
+  await rail.getByRole('button', { name: 'More', exact: true }).click();
+  await sheet.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Business name')).toHaveValue('Mobile E2E Cart');
 
   const manifest = await page.evaluate(async () => {
@@ -89,9 +141,9 @@ test('keeps a mobile ledger and its shell available after the production server 
   await expect(offlinePage.getByRole('article', { name: 'Items sold', exact: true })).toContainText('2 pc');
   const ledger = offlinePage.getByRole('table', { name: 'Daily inventory ledger' });
   await expect(ledger).toContainText('Siomai Pork');
-  await expect(ledger.locator('[data-label="On hand"]')).toHaveText('98');
+  await expect(ledger.locator('[data-label="On hand"]')).toHaveText('97');
   const activity = offlinePage.getByRole('list', { name: 'Recent activity' });
-  await expect(activity.locator('time')).toHaveCount(3);
+  await expect(activity.locator('time')).toHaveCount(4);
   await expect(activity).not.toContainText('Invalid Date');
   await expect(offlinePage.getByLabel('Current location')).toHaveValue(/.+/);
   expect(await offlinePage.getByLabel('Current location').locator('option:checked').innerText()).toBe('Phone Cart');

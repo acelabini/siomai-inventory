@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { InventoryApi } from '../shared/contracts';
-import type { CatalogLocation } from '../shared/schemas';
+import type { CatalogLocation, SetupState } from '../shared/schemas';
 import { getInventoryApi } from './api';
 import LocationsPage from './pages/LocationsPage';
 import InventoryPage from './pages/InventoryPage';
@@ -16,6 +16,8 @@ import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
 import AppShell from './components/AppShell';
 import InstallNotice from './components/InstallNotice';
+import Button from './components/ui/Button';
+import InlineNotice from './components/ui/InlineNotice';
 import './styles.css';
 
 function manilaToday(): string {
@@ -25,7 +27,11 @@ function manilaToday(): string {
 }
 
 export default function App({ api = getInventoryApi() }: { api?: InventoryApi } = {}) {
-  const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
+  const [setup, setSetup] = useState<SetupState | null>(null);
+  const setupComplete = setup?.complete ?? null;
+  const [initializationAttempt, setInitializationAttempt] = useState(0);
+  const [startupFailed, setStartupFailed] = useState(false);
+  const [locationsReady, setLocationsReady] = useState(false);
   const [view, setView] = useState('Dashboard');
   const [locations, setLocations] = useState<CatalogLocation[]>([]);
   const [locationId, setLocationId] = useState('');
@@ -33,9 +39,10 @@ export default function App({ api = getInventoryApi() }: { api?: InventoryApi } 
 
   useEffect(() => {
     let mounted = true;
-    void api.getSetupState().then((state) => { if (mounted) setSetupComplete(state.complete); });
+    void api.getSetupState().then((state) => { if (mounted) setSetup(state); })
+      .catch(() => { if (mounted) setStartupFailed(true); });
     return () => { mounted = false; };
-  }, [api]);
+  }, [api, initializationAttempt]);
 
   useEffect(() => {
     if (setupComplete !== true) return;
@@ -44,12 +51,22 @@ export default function App({ api = getInventoryApi() }: { api?: InventoryApi } 
       if (!mounted) return;
       setLocations(items);
       setLocationId((current) => current || items[0]?.id || '');
-    });
+      setLocationsReady(true);
+    }).catch(() => { if (mounted) setStartupFailed(true); });
     return () => { mounted = false; };
   }, [api, setupComplete]);
 
-  if (setupComplete === null) return <main className="setup-page"><p role="status">Loading local ledger…</p></main>;
-  if (!setupComplete) return <SetupPage api={api} onComplete={(nextView) => { setSetupComplete(true); if (nextView) setView(nextView); }} />;
+  if (startupFailed) return <main className="setup-page">
+    <InlineNotice tone="danger" title="The local ledger could not be loaded" action={<Button variant="primary" onClick={() => {
+      setStartupFailed(false); setSetup(null); setLocationsReady(false);
+      setInitializationAttempt((attempt) => attempt + 1);
+    }}>Retry</Button>}>
+      <p>Try again. If the problem continues, close and reopen the app, and check that storage is available on this device.</p>
+      <p>Do not clear app or browser data or reinstall the app; your ledger is stored on this device. Keep any exported backups safe.</p>
+    </InlineNotice>
+  </main>;
+  if (setupComplete === null || setupComplete && !locationsReady) return <main className="setup-page"><p role="status">Loading local ledger…</p></main>;
+  if (!setupComplete) return <SetupPage api={api} initialSetup={setup!} onComplete={(nextView) => { setSetup((current) => current && { ...current, complete: true }); if (nextView) setView(nextView); }} />;
 
   let page;
   if (view === 'Sales') page = <SalesPage api={api} activeLocationId={locationId} onLocationChange={setLocationId} />;

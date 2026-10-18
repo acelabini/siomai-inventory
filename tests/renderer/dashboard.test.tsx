@@ -163,6 +163,57 @@ describe('dashboard and reports', () => {
     expect(print).toHaveBeenCalledOnce();
   });
 
+  it.each(['2026-10-06 16:30:00', '2026-10-06T16:30:00.000Z', '2026-10-07T00:30:00+08:00'])('renders populated sales, movement, and discrepancy timestamps in Manila for %s', async (timestamp) => {
+    const api = makeApi({
+      getSalesReport: vi.fn().mockResolvedValue({ date: '2026-10-07', sales: [{ id: 'sale', locationId: 'main', businessAt: timestamp, totalCentavos: 150, costCentavos: 100, grossProfitCentavos: 50 }] }),
+      getMovementReport: vi.fn().mockResolvedValue({ date: '2026-10-07', movements: [{ id: 'movement', locationId: 'main', productId: 'pork', productName: 'Pork', quantityPieces: 4, movementType: 'count_adjustment', occurredAt: timestamp, relatedEntityType: 'stock_count', relatedEntityId: 'count', note: 'Found four', unitCostCentavos: null, lineCostCentavos: null }] }),
+      getDiscrepancyReport: vi.fn().mockResolvedValue({ date: '2026-10-07', count: 1, items: [{ locationId: 'main', productId: 'pork', productName: 'Pork', expectedPieces: 10, countedPieces: 14, differencePieces: 4, countedAt: timestamp }] }),
+    });
+    render(<ReportsPage api={api} />);
+    await screen.findByRole('region', { name: 'Report summary' });
+    for (const [kind, tableName, label, expected] of [
+      ['sales', 'Sales report', 'Recorded at', /10\/7\/2026.*12:30:00.*AM/i],
+      ['movements', 'Stock movement report', 'Time', /12:30:00.*AM/i],
+      ['discrepancies', 'Stock count discrepancies', 'Counted at', /10\/7\/2026.*12:30:00.*AM/i],
+    ] as const) {
+      fireEvent.change(screen.getByLabelText('Report type'), { target: { value: kind } });
+      const table = screen.getByRole('table', { name: tableName });
+      expect.soft(table.querySelector(`[data-label="${label}"]`)).toHaveTextContent(expected);
+    }
+  });
+
+  it.each(['getSetupState', 'listLocations'] as const)('blocks startup on %s failure and retries initialization without discarding the ledger', async (method) => {
+    const complete = { complete: true, businessName: 'Cart', locations: [], sampleProducts: [] };
+    const api = makeApi({ getSetupState: vi.fn().mockResolvedValue(complete) });
+    vi.mocked(api[method]).mockRejectedValueOnce(new Error('Storage unavailable'));
+    render(<App api={api} />);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/local ledger could not be loaded/i);
+    expect(alert).toHaveTextContent(/close.*reopen|reload|try again/i);
+    expect(alert).toHaveTextContent(/do not clear.*data/i);
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading local ledger…')).not.toBeInTheDocument();
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByRole('heading', { name: 'Today at a glance' })).toBeVisible();
+    expect(await screen.findByRole('article', { name: 'Sales' })).toHaveTextContent('₱125.00');
+    expect(screen.getByLabelText('Current location')).toHaveValue('main');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // The location-failure path must restart the setup check too, not just dismiss its error.
+    expect(api.getSetupState).toHaveBeenCalledTimes(2);
+  });
+
+  it('recovers first-run setup from the successful retry without another failing storage read', async () => {
+    const api = makeApi({ getSetupState: vi.fn()
+      .mockRejectedValueOnce(new Error('Storage unavailable'))
+      .mockResolvedValueOnce({ complete: false, businessName: null, locations: [], sampleProducts: [] })
+      .mockRejectedValue(new Error('Storage failed again')) });
+    render(<App api={api} />);
+    fireEvent.click(within(await screen.findByRole('alert')).getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByRole('heading', { name: 'Set up your business' })).toBeVisible();
+    expect(screen.getByLabelText(/business name/i)).toBeEnabled();
+    expect(screen.getByLabelText(/location name/i)).toBeEnabled();
+  });
+
   it('keeps shared location and Manila date context across navigation and page filters', async () => {
     const api = makeApi({ getSetupState: vi.fn().mockResolvedValue({ complete: true, businessName: 'Cart ni Ate', locations: [], sampleProducts: [] }) });
     render(<App api={api} />);

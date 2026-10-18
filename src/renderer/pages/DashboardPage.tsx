@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { DashboardReport, InventoryApi } from '../../shared/contracts';
 import type { CatalogLocation, StockMovement } from '../../shared/schemas';
 import { getInventoryApi } from '../api';
+import { utcTimestamp } from '../time';
 import DataTable from '../components/DataTable';
 import MetricCard from '../components/MetricCard';
 import AppIcon from '../components/ui/AppIcon';
@@ -22,8 +23,6 @@ const peso = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'curren
 
 type SharedFilter = { locationId: string; date: string; locations: CatalogLocation[] };
 export type DashboardActivityItem = { id: string; kind: 'sale' | 'movement'; occurredAt: string; title: string; detail: string };
-const utcTimestamp = (value: string) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
-  ? `${value.replace(' ', 'T')}Z` : value;
 const manilaDateTime = (value: string) => new Date(utcTimestamp(value)).toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
 const movementTitles: Record<StockMovement['movementType'], string> = {
   opening_balance: 'Opening balance', replenishment: 'Replenishment', transfer_in: 'Transfer in',

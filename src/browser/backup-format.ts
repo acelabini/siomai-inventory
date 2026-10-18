@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { catalogLocationSchema, catalogProductSchema } from '../shared/schemas';
+import { catalogLocationSchema, catalogProductSchema, completeSetupSchema } from '../shared/schemas';
 import type { BrowserDatabase } from './db';
 
 const id = z.string().min(1);
@@ -110,6 +110,34 @@ export function validateBrowserBackup(input: unknown): BrowserBackup {
   for (const row of t.replenishments) requireBackup(t.replenishmentLines.some((line) => line.replenishmentId === row.id));
   for (const row of t.stockCounts) requireBackup(t.stockCountLines.some((line) => line.stockCountId === row.id));
   for (const row of t.transferBatches) requireBackup(t.transfers.some((line) => line.transferBatchId === row.id));
+  // Every non-sale operation owns exactly one movement per product/direction.
+  // Match persisted pieces, since a product's pack size can change later.
+  const expectedMovements = new Map<string, bigint>();
+  const movementKey = (row: Pick<Tables['stockMovements'][number], 'movementType' | 'relatedEntityType' | 'relatedEntityId' | 'locationId' | 'productId'>) =>
+    JSON.stringify([row.movementType, row.relatedEntityType, row.relatedEntityId, row.locationId, row.productId]);
+  const expectMovement = (movementType: Tables['stockMovements'][number]['movementType'], relatedEntityType: Tables['stockMovements'][number]['relatedEntityType'], relatedEntityId: string | null, locationId: string, productId: string, quantity: bigint) => {
+    if (quantity === 0n) return;
+    const key = movementKey({ movementType, relatedEntityType, relatedEntityId, locationId, productId });
+    requireBackup(!expectedMovements.has(key));
+    expectedMovements.set(key, quantity);
+  };
+  // Opening records have a compound product/location key, not a stored receipt ID.
+  // Both first-run null references and later opening_stock receipt references use that key.
+  for (const row of t.openingStockRecords) expectMovement('opening_balance', null, null, row.locationId, row.productId, BigInt(row.quantityPieces));
+  for (const row of t.replenishmentLines) expectMovement('replenishment', 'replenishment', row.replenishmentId, replenishments.get(row.replenishmentId)!.locationId, row.productId, BigInt(row.quantityPieces));
+  for (const row of t.transfers) {
+    const ref = row.transferBatchId ?? row.id;
+    expectMovement('transfer_out', 'transfer', ref, row.fromLocationId, row.productId, -BigInt(row.quantityPieces));
+    expectMovement('transfer_in', 'transfer', ref, row.toLocationId, row.productId, BigInt(row.quantityPieces));
+  }
+  for (const row of t.stockCountLines) expectMovement('count_adjustment', 'stock_count', row.stockCountId, counts.get(row.stockCountId)!.locationId, row.productId, BigInt(row.countedPieces) - BigInt(row.expectedPieces));
+  for (const movement of t.stockMovements) {
+    if (movement.movementType === 'sale' || movement.movementType === 'sale_void') continue;
+    const key = movementKey(movement.movementType === 'opening_balance' ? { ...movement, relatedEntityType: null, relatedEntityId: null } : movement);
+    requireBackup(expectedMovements.get(key) === BigInt(movement.quantityPieces));
+    expectedMovements.delete(key);
+  }
+  requireBackup(expectedMovements.size === 0);
   const opening = new Set(t.openingStockRecords.map(pairKey));
   for (const movement of t.stockMovements) {
     const ref = movement.relatedEntityId;
@@ -140,8 +168,8 @@ export function validateBrowserBackup(input: unknown): BrowserBackup {
     movementTotals.set(key, (movementTotals.get(key) ?? 0n) + BigInt(row.quantityPieces));
   }
   for (const [key, quantity] of balances) requireBackup(quantity === (movementTotals.get(key) ?? 0n));
-  requireBackup(!settings.has('setup_complete') || ['true', 'false'].includes(settings.get('setup_complete')!));
-  if (settings.get('setup_complete') === 'true') requireBackup(settings.get('business_name')?.trim() && t.locations.some((row) => row.isActive));
+  const businessName = completeSetupSchema.shape.businessName.safeParse(settings.get('business_name'));
+  requireBackup(settings.get('setup_complete') === 'true' && businessName.success && t.locations.some((row) => row.isActive));
   return backup;
 }
 

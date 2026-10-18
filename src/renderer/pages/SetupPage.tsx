@@ -14,10 +14,10 @@ const setupSteps: Array<{ step: SetupStep; label: string }> = [
 ];
 
 type SetupChoice = 'samples' | 'import' | 'manual';
-type Props = { api?: InventoryApi; onComplete: (nextView?: string) => void };
+type Props = { api?: InventoryApi; initialSetup?: SetupState; onComplete: (nextView?: string) => void };
 
-export default function SetupPage({ api = getInventoryApi(), onComplete }: Props) {
-  const [setup, setSetup] = useState<SetupState | null>(null);
+export default function SetupPage({ api = getInventoryApi(), initialSetup, onComplete }: Props) {
+  const [setup, setSetup] = useState<SetupState | null>(initialSetup ?? null);
   const [businessName, setBusinessName] = useState('');
   const [locationName, setLocationName] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
@@ -28,10 +28,11 @@ export default function SetupPage({ api = getInventoryApi(), onComplete }: Props
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (initialSetup) return;
     let mounted = true;
     void api.getSetupState().then((state) => { if (mounted) setSetup(state); });
     return () => { mounted = false; };
-  }, [api]);
+  }, [api, initialSetup]);
 
   if (!setup) return <main className="setup-page"><p role="status">Loading setup…</p></main>;
   const loadedSetup = setup;

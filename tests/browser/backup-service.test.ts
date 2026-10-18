@@ -37,6 +37,40 @@ describe('browser backup recovery', () => {
     expect(await ledger.restoreBackup(choice!.token)).toBe(true);
     expect(await snapshot()).toEqual(before);
     await expect(ledger.restoreBackup(choice!.token)).rejects.toThrow(/expired|select/i);
+    fixture.db.close();
+    await fixture.db.open();
+    const reloaded = api();
+    expect(await reloaded.getSetupState()).toMatchObject({ complete: true, businessName: 'Cart' });
+    expect(await reloaded.listLocations()).toHaveLength(2);
+    await reloaded.saveSettings({ businessName: 'Restored cart is usable' });
+    expect((await reloaded.getSettings()).businessName).toBe('Restored cart is usable');
+  });
+  it.each(['missing-setup', 'false-setup', 'unexpected-setup', 'duplicate-setup', 'missing-name', 'blank-name', 'long-name', 'duplicate-name', 'no-locations', 'no-active-location'])('rejects %s before token issuance and keeps the live ledger usable after reload', async (mutation) => {
+    const ledger = await populated();
+    await ledger.createManualBackup();
+    const backup: BrowserBackup = JSON.parse(await downloaded!.blob.text());
+    const settings = backup.tables.settings;
+    const setup = settings.find((row) => row.key === 'setup_complete')!;
+    const name = settings.find((row) => row.key === 'business_name')!;
+    if (mutation === 'missing-setup') settings.splice(settings.indexOf(setup), 1);
+    if (mutation === 'false-setup') setup.value = 'false';
+    if (mutation === 'unexpected-setup') setup.value = '1';
+    if (mutation === 'duplicate-setup') settings.push({ ...setup });
+    if (mutation === 'missing-name') settings.splice(settings.indexOf(name), 1);
+    if (mutation === 'blank-name') name.value = '  ';
+    if (mutation === 'long-name') name.value = 'x'.repeat(121);
+    if (mutation === 'duplicate-name') settings.push({ ...name });
+    if (mutation === 'no-locations') backup.tables.locations = [];
+    if (mutation === 'no-active-location') backup.tables.locations.forEach((row) => { row.isActive = false; });
+    selected = JSON.stringify(backup);
+    const before = await snapshot();
+    await expect(ledger.chooseBackupFile()).rejects.toThrow(/backup/i);
+    fixture.db.close();
+    await fixture.db.open();
+    expect(await snapshot()).toEqual(before);
+    expect(await api().getSetupState()).toMatchObject({ complete: true, businessName: 'Cart' });
+    await api().saveSettings({ businessName: 'Still usable' });
+    expect((await api().getSettings()).businessName).toBe('Still usable');
   });
   it.each(['version', 'missing-table', 'invalid-record', 'dangling-product', 'dangling-movement', 'duplicate-id', 'line-negative', 'line-duplicate', 'line-gap'])('rejects %s backups and preserves the current ledger', async (mutation) => {
     const ledger = await populated();
@@ -79,7 +113,8 @@ describe('browser backup recovery', () => {
   });
   it('accepts exact small pack quantities serialized with an exponent by business services', async () => {
     const ledger = api();
-    const location = await ledger.saveLocation({ name: 'Main' });
+    const setup = await ledger.completeSetup({ businessName: 'Cart', locationName: 'Main', sampleProductIds: [], openingStock: [] });
+    const location = { id: setup.locationId };
     const product = await ledger.saveProduct({ sku: 'TINY', name: 'Tiny', piecesPerPack: 10_000_000, purchaseCostPerPackCentavos: 1000, sellingPricePerPieceCentavos: 1, sellingPricePerPackCentavos: 1000, lowStockThresholdPieces: 0 });
     await ledger.recordReplenishment({ locationId: location.id, lines: [{ productId: product.id, quantity: 0.0000001, unit: 'pack' }] });
     await ledger.createManualBackup();
@@ -123,9 +158,68 @@ describe('browser backup recovery', () => {
     }
     expect(await snapshot()).toEqual(before);
   });
+  const operationTypes = ['opening_balance', 'replenishment', 'transfer_out', 'transfer_in', 'count_adjustment'] as const;
+  const operationCorruptions = ['changed-record', 'missing', 'duplicate', 'split', 'wrong-quantity', 'wrong-product', 'wrong-location', 'wrong-reference', 'wrong-type', 'extra'] as const;
+  it.each(operationTypes.flatMap((type) => operationCorruptions.map((corruption) => ({ type, corruption }))))('rejects $type $corruption even when balances match movements, preserving live data', async ({ type, corruption }) => {
+    const ledger = api();
+    const setup = await ledger.completeSetup({ businessName: 'Cart', locationName: 'Main', sampleProductIds: [], openingStock: [] });
+    const product = await ledger.saveProduct({ sku: 'A', name: 'Pork', piecesPerPack: 10, purchaseCostPerPackCentavos: 1000, sellingPricePerPieceCentavos: 150, sellingPricePerPackCentavos: 1400, lowStockThresholdPieces: 0 });
+    const otherProduct = await ledger.saveProduct({ ...product, id: undefined, sku: 'B', name: 'Beef' });
+    const other = await ledger.saveLocation({ name: 'Other' });
+    await ledger.setOpeningStock({ locationId: setup.locationId, lines: [{ productId: product.id, quantity: 100, unit: 'piece' }] });
+    await ledger.recordReplenishment({ locationId: setup.locationId, lines: [{ productId: product.id, quantity: 1, unit: 'pack' }] });
+    await ledger.transferStock({ fromLocationId: setup.locationId, toLocationId: other.id, lines: [{ productId: product.id, quantity: 10, unit: 'piece' }] });
+    // Positive difference keeps all malformed movement totals nonnegative, even with the transfer-in removed.
+    await ledger.submitStockCount({ locationId: other.id, lines: [{ productId: product.id, countedQuantity: 14, unit: 'piece', reason: 'Four found' }] });
+    await ledger.createManualBackup();
+    const backup: BrowserBackup = JSON.parse(await downloaded!.blob.text());
+    const t = backup.tables;
+    const movement = t.stockMovements.find((row) => row.movementType === type)!;
+    if (corruption === 'changed-record') {
+      if (type === 'opening_balance') t.openingStockRecords[0].quantityPieces++;
+      if (type === 'replenishment') t.replenishmentLines[0].quantityPieces++;
+      if (type.startsWith('transfer_')) t.transfers[0].quantityPieces++;
+      if (type === 'count_adjustment') t.stockCountLines[0].countedPieces++;
+    }
+    if (corruption === 'missing') t.stockMovements.splice(t.stockMovements.indexOf(movement), 1);
+    if (corruption === 'duplicate' || corruption === 'extra') t.stockMovements.push({ ...movement, id: crypto.randomUUID(), quantityPieces: corruption === 'extra' ? Math.sign(movement.quantityPieces) : movement.quantityPieces });
+    if (corruption === 'split') {
+      movement.quantityPieces /= 2;
+      t.stockMovements.push({ ...movement, id: crypto.randomUUID() });
+    }
+    if (corruption === 'wrong-quantity') movement.quantityPieces += Math.sign(movement.quantityPieces);
+    if (corruption === 'wrong-product') movement.productId = otherProduct.id;
+    if (corruption === 'wrong-location') movement.locationId = movement.locationId === other.id ? setup.locationId : other.id;
+    if (corruption === 'wrong-reference') movement.relatedEntityId = null;
+    if (corruption === 'wrong-type') movement.relatedEntityType = 'sale';
+    // Add all product/location balances from the mutated movements; balance equality cannot hide missing operation checks.
+    t.inventoryBalances = t.locations.flatMap((location) => t.products.map((item) => ({ locationId: location.id, productId: item.id, updatedAt: backup.createdAt,
+      quantityPieces: t.stockMovements.filter((row) => row.locationId === location.id && row.productId === item.id).reduce((sum, row) => sum + row.quantityPieces, 0) })));
+    selected = JSON.stringify(backup);
+    const before = await snapshot();
+    await expect(ledger.chooseBackupFile()).rejects.toThrow(/backup/i);
+    expect(await snapshot()).toEqual(before);
+  });
+  it('restores zero opening/counts, both opening reference formats, and historic piece quantities after a pack-size edit', async () => {
+    const ledger = api();
+    const setup = await ledger.completeSetup({ businessName: 'Cart', locationName: 'Main', sampleProductIds: ['siomai-pork'], openingStock: [{ productId: 'siomai-pork', quantityPieces: 20 }] });
+    const product = await ledger.saveProduct({ sku: 'ZERO', name: 'Zero opening', piecesPerPack: 10, purchaseCostPerPackCentavos: 1000, sellingPricePerPieceCentavos: 150, sellingPricePerPackCentavos: 1400, lowStockThresholdPieces: 0 });
+    await ledger.setOpeningStock({ locationId: setup.locationId, lines: [{ productId: product.id, quantity: 0, unit: 'piece' }] });
+    await ledger.recordReplenishment({ locationId: setup.locationId, lines: [{ productId: product.id, quantity: 1, unit: 'pack' }] });
+    await ledger.submitStockCount({ locationId: setup.locationId, lines: [{ productId: product.id, countedQuantity: 10, unit: 'piece' }] });
+    await ledger.saveProduct({ ...product, piecesPerPack: 20 });
+    await ledger.createManualBackup();
+    selected = await downloaded!.blob.text();
+    const before = await snapshot();
+    const choice = await ledger.chooseBackupFile();
+    expect(await ledger.restoreBackup(choice!.token)).toBe(true);
+    expect(await snapshot()).toEqual(before);
+    expect(await ledger.getBalances(setup.locationId)).toEqual(expect.arrayContaining([{ locationId: setup.locationId, productId: product.id, quantityPieces: 10 }]));
+  });
   it('expires staged restore tokens and invalidates prior selections', async () => {
     let now = new Date('2026-10-15T00:00:00.000Z');
     const ledger = createBrowserInventoryApi({ db: fixture.db, now: () => now, pickFile: async () => ({ name: 'backup.json', size: selected!.length, text: async () => selected! }), download: async (blob) => { selected = await blob.text(); } });
+    await ledger.completeSetup({ businessName: 'Cart', locationName: 'Main', sampleProductIds: [], openingStock: [] });
     await ledger.createManualBackup();
     const first = await ledger.chooseBackupFile();
     const second = await ledger.chooseBackupFile();
@@ -135,7 +229,8 @@ describe('browser backup recovery', () => {
   });
   async function completedSaleLedger() {
     const ledger = api();
-    const location = await ledger.saveLocation({ name: 'Main' });
+    const setup = await ledger.completeSetup({ businessName: 'Cart', locationName: 'Main', sampleProductIds: [], openingStock: [] });
+    const location = { id: setup.locationId };
     const pork = await ledger.saveProduct({ sku: 'PORK', name: 'Pork', piecesPerPack: 10, purchaseCostPerPackCentavos: 1000, sellingPricePerPieceCentavos: 150, sellingPricePerPackCentavos: 1400, lowStockThresholdPieces: 0 });
     const beef = await ledger.saveProduct({ ...pork, id: undefined, sku: 'BEEF', name: 'Beef' });
     await ledger.setOpeningStock({ locationId: location.id, lines: [pork, beef].map((product) => ({ productId: product.id, quantity: 10, unit: 'piece' as const })) });
