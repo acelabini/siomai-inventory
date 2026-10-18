@@ -22,7 +22,7 @@ function setupApi(completeSetup: ReturnType<typeof vi.fn>): InventoryApi {
 }
 
 describe('SetupPage', () => {
-  it('shows labeled setup progress and explains that business data stays on this computer', async () => {
+  it('shows labeled setup progress and explains that business data stays on this device', async () => {
     render(<SetupPage api={setupApi(vi.fn())} onComplete={vi.fn()} />);
     await screen.findByRole('heading', { name: /set up your business/i });
 
@@ -31,7 +31,7 @@ describe('SetupPage', () => {
     expect(progress).toHaveTextContent('Product source');
     expect(progress).toHaveTextContent('Opening stock');
     expect(progress.querySelector('[aria-current="step"]')).toHaveTextContent('Business and location');
-    expect(screen.getByRole('status')).toHaveTextContent(/offline|on this computer|local storage/i);
+    expect(screen.getByRole('status')).toHaveTextContent(/offline|on this device|local storage/i);
   });
 
   it('marks finished steps complete and keeps business and location values when going back', async () => {

@@ -89,7 +89,7 @@ export default function SetupPage({ api = getInventoryApi(), initialSetup, onCom
           <p className="eyebrow">FIRST-RUN SETUP</p>
           <h1 id="setup-title">Set up your business</h1>
           <p className="setup-intro">A few details make the daily stock ledger yours.</p>
-          <InlineNotice tone="neutral" title="Your records stay on this computer">
+          <InlineNotice tone="neutral" title="Your records stay on this device">
             Siomai Inventory works offline. Your business and stock data are saved locally on this device.
           </InlineNotice>
           <p className="setup-welcome-detail">You can update products and locations later in Settings. No account or internet connection is required.</p>
