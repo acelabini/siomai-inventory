@@ -12,6 +12,10 @@ The web app has no backend, accounts, synchronization, or hosted database. It ne
 
 Build with `npm ci` followed by `npm run build:web`. Publish the **contents of `dist/web`** as one static directory, including `index.html`, `manifest.webmanifest`, `registerSW.js`, `sw.js`, the generated `workbox-*.js`, icons, and hashed `assets/`. Do not publish the repository, Electron package, or a development server. `npm run preview:web -- --host 127.0.0.1` serves this production output for local inspection; local HTTP loopback is a secure-context development exception, not the phone's deployment URL.
 
+### GitHub Pages deployment
+
+The repository includes `.github/workflows/pages.yml`. On every push to `main`, it installs the locked dependencies, verifies the web source, builds `dist/web`, and deploys that directory to GitHub Pages. In the GitHub repository, open **Settings → Pages** and set **Source** to **GitHub Actions** once. The project URL is normally `https://<owner>.github.io/<repository>/`; keep that URL stable because each origin has a separate on-device ledger. The workflow can also be started manually from the Actions tab.
+
 Use a stable HTTPS origin and installation path. Vite's relative base supports a dedicated root or subdirectory; keep all output together and test the actual installation path. Changing the origin creates a separate browser ledger. Configure the host to serve JavaScript, CSS, PNG, and web manifest files with their correct content types, and serve `sw.js` without redirecting it to HTML. The generated worker controls only its installation scope. Existing Content Security Policy must remain effective; no remote script, font, API, or CDN runtime is needed.
 
 ### Cache-safe releases and updates

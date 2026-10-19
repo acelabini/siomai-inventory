@@ -6,6 +6,18 @@ import { createBrowserDatabase, deleteBrowserDatabase } from '../src/browser/db'
 import { createBrowserInventoryApi } from '../src/browser/browser-inventory-api';
 
 describe('standalone PWA boundary', () => {
+  it('builds and publishes the web artifact through GitHub Pages', () => {
+    const workflowPath = path.resolve('.github/workflows/pages.yml');
+    expect(existsSync(workflowPath), 'GitHub Pages workflow exists').toBe(true);
+    const workflow = readFileSync(workflowPath, 'utf8');
+    expect(workflow).toContain('npm run build:web');
+    expect(workflow).toContain('actions/upload-pages-artifact@v4');
+    expect(workflow).toContain('path: dist/web');
+    expect(workflow).toContain('actions/deploy-pages@v4');
+    expect(workflow).toContain('pages: write');
+    expect(workflow).toContain('id-token: write');
+  });
+
   it('provides an installable standalone manifest and caches only application assets', async () => {
     const configPath = path.resolve('vite.web.config.ts');
     expect(existsSync(configPath), 'standalone web config exists').toBe(true);

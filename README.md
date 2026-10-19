@@ -6,6 +6,8 @@ An offline inventory and sales ledger for a Philippine food cart, available as a
 
 `npm run build:web` produces **`dist/web`**, ready for static HTTPS hosting. The phone version needs no Apple Developer subscription, Node application server, or hosted database. Open the hosted address in iPhone Safari while online, let it load fully, then use **Share → Add to Home Screen**. After the first complete online load, cached app files and the IndexedDB ledger work offline. Confirm an offline reopening before using it during service.
 
+Pushing `main` can publish the same build through the included GitHub Pages workflow. Enable **Settings → Pages → GitHub Actions** in the repository once, then use the stable Pages URL on the iPhone.
+
 Export manual JSON backups to Files and keep copies outside the phone; the browser cannot create automatic external backups. Website-data deletion can erase the ledger. Desktop SQLite and web JSON backups are separate formats. See the [operator guide](docs/user-guide.md) for restore and update instructions.
 
 For a production preview and mobile journey:
